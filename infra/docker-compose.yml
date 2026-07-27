@@ -1,0 +1,71 @@
+# /opt/uv-infra/docker-compose.yml
+name: uv-infra
+
+x-logging: &default-logging
+  driver: json-file
+  options: { max-size: "10m", max-file: "3" }
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    environment:
+      INFRA_TOKEN: ${INFRA_TOKEN}
+      DOMAIN: ${DOMAIN}
+    logging: *default-logging
+
+  valkey:
+    image: valkey/valkey:8-alpine
+    restart: unless-stopped
+    command: >
+      valkey-server --save "" --appendonly no
+      --maxmemory 128mb --maxmemory-policy allkeys-lru
+    volumes: [valkey_data:/data]
+    logging: *default-logging
+
+  searxng:
+    image: searxng/searxng:latest # PIN TO A DIGEST — see §19.3
+    restart: unless-stopped
+    depends_on: [valkey]
+    volumes:
+      - ./searxng:/etc/searxng:rw
+    environment:
+      SEARXNG_BASE_URL: https://search.${DOMAIN}/
+      SEARXNG_SECRET: ${SEARXNG_SECRET}
+      UWSGI_WORKERS: 4
+      UWSGI_THREADS: 4
+    logging: *default-logging
+
+  browser-worker:
+    build: ./browser-worker
+    restart: unless-stopped
+    environment:
+      PORT: 3000
+      BROWSER_POOL_SIZE: 2
+      MAX_RENDER_MS: 20000
+      RECYCLE_AFTER_RENDERS: 50
+      MAX_QUEUE_DEPTH: 20
+      AUTH_TOKEN: ${INFRA_TOKEN}
+    shm_size: 1gb # REQUIRED — Chromium hard-crashes on Docker's 64MB default
+    init: true # REQUIRED — reaps zombie Chromium processes
+    mem_limit: 2g
+    logging: *default-logging
+
+  tei:
+    image: ghcr.io/huggingface/text-embeddings-inference:cpu-latest
+    restart: unless-stopped
+    command: --model-id intfloat/multilingual-e5-small --port 3000
+    volumes: [tei_cache:/data]
+    mem_limit: 1500m
+    logging: *default-logging
+
+volumes:
+  caddy_data: {}
+  caddy_config: {}
+  valkey_data: {}
+  tei_cache: {}

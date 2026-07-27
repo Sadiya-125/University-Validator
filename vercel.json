@@ -1,0 +1,52 @@
+{
+  "env": {
+    "NEXT_PUBLIC_APP_URL": "@next_public_app_url",
+    "DATABASE_URL": "@database_url",
+    "DATABASE_POOLED_URL": "@database_pooled_url",
+    "UPSTASH_REDIS_REST_URL": "@upstash_redis_rest_url",
+    "UPSTASH_REDIS_REST_TOKEN": "@upstash_redis_rest_token",
+    "INNGEST_EVENT_KEY": "@inngest_event_key",
+    "INNGEST_SIGNING_KEY": "@inngest_signing_key",
+    "INFRA_TOKEN": "@infra_token",
+    "SEARXNG_URL": "@searxng_url",
+    "BROWSER_SERVICE_URL": "@browser_service_url",
+    "EMBEDDINGS_URL": "@embeddings_url",
+    "SEARCH_CHAIN": "@search_chain",
+    "GOOGLE_CSE_ID": "@google_cse_id",
+    "GOOGLE_API_KEY": "@google_api_key",
+    "LLM_PROVIDER": "@llm_provider",
+    "GEMINI_API_KEY": "@gemini_api_key",
+    "LLM_MODEL": "@llm_model",
+    "LLM_BASE_URL": "@llm_base_url",
+    "LLM_API_KEY": "@llm_api_key",
+    "LLM_MAX_TOKENS": "@llm_max_tokens",
+    "LLM_TEMPERATURE": "@llm_temperature",
+    "LLM_VERIFY_SSL": "@llm_verify_ssl",
+    "LLM_TIMEOUT_MS": "@llm_timeout_ms",
+    "LLM_MAX_RUN_COST_USD": "@llm_max_run_cost_usd",
+    "BLOB_READ_WRITE_TOKEN": "@blob_read_write_token",
+    "SENTRY_DSN": "@sentry_dsn",
+    "OTEL_EXPORTER_OTLP_ENDPOINT": "@otel_exporter_otlp_endpoint",
+    "METRICS_TOKEN": "@metrics_token",
+    "USE_GOOGLE_CSE": "@use_google_cse",
+    "USE_BROWSER": "@use_browser",
+    "USE_LLM_REASONING": "@use_llm_reasoning",
+    "USE_LIVE_AUTHORITIES": "@use_live_authorities",
+    "USE_VECTOR_SEARCH": "@use_vector_search",
+    "USE_WIKIDATA": "@use_wikidata",
+    "STRICT_ROBOTS": "@strict_robots",
+    "READ_ONLY_MODE": "@read_only_mode",
+    "CRAWLER_USER_AGENT": "@crawler_user_agent",
+    "CRAWLER_CONTACT_EMAIL": "@crawler_contact_email"
+  },
+  "functions": {
+    "api/inngest/**": {
+      "maxDuration": 300
+    },
+    "api/validate/**": {
+      "maxDuration": 300
+    }
+  },
+  "buildCommand": "pnpm run build",
+  "installCommand": "pnpm install --frozen-lockfile"
+}

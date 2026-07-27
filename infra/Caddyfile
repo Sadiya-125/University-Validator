@@ -1,0 +1,27 @@
+{
+	email you@your-domain.tld
+}
+
+(private) {
+	@unauthorized not header Authorization "Bearer {env.INFRA_TOKEN}"
+	respond @unauthorized "forbidden" 403
+	header {
+		-Server
+		Strict-Transport-Security "max-age=31536000"
+	}
+}
+
+search.{$DOMAIN} {
+	import private
+	reverse_proxy searxng:8080
+}
+
+browser.{$DOMAIN} {
+	import private
+	reverse_proxy browser-worker:3000
+}
+
+embed.{$DOMAIN} {
+	import private
+	reverse_proxy tei:3000
+}

@@ -1,0 +1,22 @@
+[
+  {
+    "externalId": "aicte-001",
+    "name": "Indian Institute of Technology Bombay",
+    "city": "Mumbai",
+    "state": "Maharashtra",
+    "website": "https://www.iitb.ac.in",
+    "affiliatedUniversity": null,
+    "program": "Engineering",
+    "level": "UG/PG"
+  },
+  {
+    "externalId": "aicte-002",
+    "name": "Delhi Technological University",
+    "city": "Delhi",
+    "state": "Delhi",
+    "website": "https://www.dtu.ac.in",
+    "affiliatedUniversity": null,
+    "program": "Engineering",
+    "level": "UG/PG"
+  }
+]

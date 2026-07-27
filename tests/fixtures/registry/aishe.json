@@ -1,0 +1,18 @@
+[
+  {
+    "externalId": "aishe-001",
+    "name": "Anna University Chennai",
+    "city": "Chennai",
+    "state": "Tamil Nadu",
+    "website": "https://www.annauniv.edu",
+    "affiliatedUniversity": null
+  },
+  {
+    "externalId": "aishe-002",
+    "name": "Osmania University",
+    "city": "Hyderabad",
+    "state": "Telangana",
+    "website": "https://www.osmania.ac.in",
+    "affiliatedUniversity": null
+  }
+]
