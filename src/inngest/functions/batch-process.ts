@@ -20,7 +20,7 @@ import { inngest, requestValidation } from "../client";
 import { getDb } from "@/server/db/client";
 import { batches, batchItems } from "@/server/db/schema";
 import { eq, inArray } from "drizzle-orm";
-import { normalizeInstitutionName } from "@/server/normalization/normalizer";
+import { normalizeName } from "@/server/matching/normalize";
 import { randomUUID } from "crypto";
 
 interface BatchItemRow {
@@ -100,7 +100,8 @@ export const batchProcess = inngest.createFunction(
         const normalized = new Map<string, BatchItemRow[]>();
 
         for (const item of items) {
-          const normalizedName = normalizeInstitutionName(item.inputName);
+          const result = normalizeName(item.inputName);
+          const normalizedName = result.normalized;
           if (!normalized.has(normalizedName)) {
             normalized.set(normalizedName, []);
           }
@@ -122,7 +123,7 @@ export const batchProcess = inngest.createFunction(
 
       // Step 3: Fan out validations in chunks of 100
       const CHUNK_SIZE = 100;
-      const uniqueNames = Array.from(mapping.keys());
+      const uniqueNames: string[] = Array.from(mapping.keys());
       const chunks: string[][] = [];
 
       for (let i = 0; i < uniqueNames.length; i += CHUNK_SIZE) {
@@ -133,7 +134,7 @@ export const batchProcess = inngest.createFunction(
       const validationRunIds: string[] = [];
 
       for (let chunkIdx = 0; chunkIdx < chunks.length; chunkIdx++) {
-        const chunk = chunks[chunkIdx];
+        const chunk = chunks[chunkIdx]!;
 
         await step.run(`fan-out-chunk-${chunkIdx}`, async () => {
           for (const normalizedName of chunk) {

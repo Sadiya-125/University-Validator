@@ -27,6 +27,7 @@ import { z } from "zod";
 import { getDb } from "@/server/db/client";
 import { batches, batchItems } from "@/server/db/schema";
 import { requestBatchProcess } from "@/inngest";
+import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 
 /**
@@ -73,13 +74,13 @@ export async function POST(request: NextRequest) {
         total: items.length,
         state: "created",
       })
-      .returning({ id: batches.id });
+      .returning();
 
     if (batchResult.length === 0) {
       throw new Error("Failed to create batch");
     }
 
-    const batchId = batchResult[0].id;
+    const batchId = batchResult[0]!.id;
 
     // Bulk insert batch items in chunks
     const CHUNK_SIZE = 1000;
@@ -100,7 +101,7 @@ export async function POST(request: NextRequest) {
     await db
       .update(batches)
       .set({ state: "queued" })
-      .where((t) => t.id === batchId);
+      .where(eq(batches.id, batchId));
 
     // Emit batch/created event (single event, Inngest will fan-out)
     try {

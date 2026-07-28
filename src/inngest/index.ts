@@ -8,7 +8,7 @@
  * - validationChannel: Channel for publishing progress
  */
 
-export { inngest, requestValidation, completeValidation, failValidation } from "./client";
+export { inngest, requestValidation, completeValidation, failValidation, requestBatchProcess, createBatch, queueBatchItem } from "./client";
 export type {
   ValidationRequestedEvent,
   ValidationCompletedEvent,
@@ -26,3 +26,6 @@ export type { ProgressUpdate, PartialResult, FinalResult } from "./channels";
 export { validateInstitution, validateInstitutionRetry } from "./functions/validate-institution";
 export { ingestRegistry, scheduleRegistryIngest } from "./functions/ingest-registry";
 export { batchProcess } from "./functions/batch-process";
+export { cronRevalidateStale } from "./functions/cron-revalidate-stale";
+export { cronMetricsRollup } from "./functions/cron-metrics-rollup";
+export { cronCacheWarm } from "./functions/cron-cache-warm";
