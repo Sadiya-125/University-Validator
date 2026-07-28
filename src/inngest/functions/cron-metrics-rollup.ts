@@ -24,9 +24,11 @@ export const cronMetricsRollup = inngest.createFunction(
     name: "Metrics Rollup",
 
     // Run every hour
-    trigger: {
-      cron: CRON_SCHEDULE,
-    },
+    triggers: [
+      {
+        cron: CRON_SCHEDULE,
+      },
+    ],
 
     // Only one execution at a time
     concurrency: {

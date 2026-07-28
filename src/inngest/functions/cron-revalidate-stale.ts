@@ -16,9 +16,7 @@
 import { inngest, requestValidation } from "../client";
 import { getDb } from "@/server/db/client";
 import { institutions } from "@/server/db/schema";
-import { lt, eq, isNotNull } from "drizzle-orm";
-import { normalizeInstitutionName } from "@/server/normalization/normalizer";
-import { sql } from "drizzle-orm";
+import { lt, sql } from "drizzle-orm";
 
 const CRON_SCHEDULE = "0 */6 * * *"; // Every 6 hours
 const MAX_PER_RUN = 500;
