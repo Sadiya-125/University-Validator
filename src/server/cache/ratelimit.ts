@@ -52,7 +52,7 @@ function getRateLimiter(scope: string): Ratelimit | null {
  * Check if a request should be rate limited.
  * Uses sliding window: counts requests in a rolling time window.
  *
- * @param scope Limiter scope (e.g., "searxng", "google-cse")
+ * @param scope Limiter scope (e.g., "searxng", "duckduckgo")
  * @param identifier Request identifier (e.g., IP, user ID, hostname)
  * @param limit Max requests in the window
  * @param windowSeconds Window duration in seconds

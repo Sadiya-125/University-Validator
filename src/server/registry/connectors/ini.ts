@@ -2,9 +2,9 @@
  * INI (Institutes of National Importance) Connector
  *
  * Scope: Parliament-created institutions (IIT, NIT, IIIT, AIIMS, IISc, etc.)
- * Source: AISHE Dashboard (https://dashboard.aishe.gov.in/hedirectory/)
- * Method: Playwright-based scraping from mat-table data
- * Total institutions: 173+
+ * Source: Wikipedia (https://en.wikipedia.org/wiki/Institutes_of_National_Importance)
+ * Method: HTTP fetch + HTML table parsing with regex
+ * Total institutions: 173+ (as of June 2026)
  *
  * These are established by Acts of Parliament and are not under UGC or AICTE.
  */
@@ -19,8 +19,8 @@ export const ini: RegistryConnector = {
   cadence: 'annually',
 
   /**
-   * Fetch raw institution data from AISHE Dashboard.
-   * Delegates to the INI scraper which uses Playwright to extract data from mat-tables.
+   * Fetch raw institution data from Wikipedia.
+   * Delegates to the INI scraper which fetches and parses Wikipedia tables.
    */
   async *fetch(ctx?: FetchContext) {
     yield* scrapeINI(ctx);
@@ -60,32 +60,20 @@ export const ini: RegistryConnector = {
   },
 
   /**
-   * Source URLs for INI data from AISHE Dashboard.
-   * Covers all 13 INI categories with 173+ institutions.
+   * Source URL for INI data from Wikipedia.
+   * Contains all 173+ institutions across all categories.
    */
   sourceUrls: [
-    'https://dashboard.aishe.gov.in/hedirectory/#/hedirectory/universityDetails/INI/indian%20institute%20of%20information%20technology',
-    'https://dashboard.aishe.gov.in/hedirectory/#/hedirectory/universityDetails/INI/indian%20institute%20of%20management',
-    'https://dashboard.aishe.gov.in/hedirectory/#/hedirectory/universityDetails/INI/indian%20institute%20of%20science%20education%20&%20research',
-    'https://dashboard.aishe.gov.in/hedirectory/#/hedirectory/universityDetails/INI/indian%20institute%20of%20technology',
-    'https://dashboard.aishe.gov.in/hedirectory/#/hedirectory/universityDetails/INI/indian%20statistical%20institute',
-    'https://dashboard.aishe.gov.in/hedirectory/#/hedirectory/universityDetails/INI/national%20institute%20of%20desig',
-    'https://dashboard.aishe.gov.in/hedirectory/#/hedirectory/universityDetails/INI/national%20institute%20of%20fashion%20technology',
-    'https://dashboard.aishe.gov.in/hedirectory/#/hedirectory/universityDetails/INI/national%20institute%20of%20technology',
-    'https://dashboard.aishe.gov.in/hedirectory/#/hedirectory/universityDetails/INI/school%20of%20planning%20&%20architecture',
-    'https://dashboard.aishe.gov.in/hedirectory/#/hedirectory/universityDetails/INI/national%20institute%20of%20pharmaceutical',
-    'https://dashboard.aishe.gov.in/hedirectory/#/hedirectory/universityDetails/INI/inicu',
-    'https://dashboard.aishe.gov.in/hedirectory/#/hedirectory/universityDetails/INI/all%20india%20institute%20of%20medical%20science',
-    'https://dashboard.aishe.gov.in/hedirectory/#/hedirectory/universityDetails/INI/others',
+    'https://en.wikipedia.org/wiki/Institutes_of_National_Importance',
   ],
 
   /**
    * Validation rules for INI registry.
-   * Scraping from AISHE may have some variance; expected ~173 institutions.
+   * Wikipedia provides a stable, well-maintained list of 173+ institutions.
    */
   validation: {
-    rowCountVariance: 0.15, // Allow some variance for scraping variations
-    requiredColumnsThreshold: 0.95, // Most should have names
+    rowCountVariance: 0.10, // ±10% variance from expected 173
+    requiredColumnsThreshold: 0.99, // Almost all should have names
     duplicateExternalIdThreshold: 0.01, // Very few duplicates allowed
     requiredColumns: ['name', 'externalId'],
   } as ValidationRules,

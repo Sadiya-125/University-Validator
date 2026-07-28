@@ -2,8 +2,8 @@
  * DigiLocker NAD (National Academic Depository) Verification
  *
  * Verifies if an institution is registered on DigiLocker by checking the NAD registry.
- * Scrapes the NAD "Records by Year" page to extract all registered institutions,
- * then provides name matching to check if a given institution is available on DigiLocker.
+ * Scrapes the NAD "Records by Year" page to extract all registered institutions with
+ * complete year-by-year availability data.
  *
  * Page: https://nad.digilocker.gov.in/recordsbyyear
  * Structure: Tab-based with multiple years and institution categories
@@ -11,10 +11,11 @@
  * - Categories: State University, Private University, Deemed University, Central University,
  *   IIT, IIM, NIT, IIIT, AIIMS, Autonomous College, ICAR, IISER, NID, NIFTEM, NIPER,
  *   Others, Others INI, SPA, Standalone Institutions, Technical Board, Examination Board, School Board
- * - Data extracted: Institution names, states, and document types (NOT year counts or historical data)
+ * - Data extracted: Institution names, states, document types, AND year-by-year document counts
  *
  * Verification Logic:
  * - Presence in NAD registry = Institution is available on DigiLocker
+ * - Year-by-year data shows timeline of document availability
  * - Uses deterministic name matching with normalization, abbreviation expansion,
  *   and city aliases for accurate results.
  */
@@ -24,7 +25,8 @@ import { FetchContext } from "../types";
 interface NADInstitution {
   name: string;
   state?: string;
-  documentTypes?: string[];
+  documentTypes: string[]; // Document type names
+  yearData?: Record<string, Record<number, number>>; // [docType][year] = count
 }
 
 interface DigiLockerCheckResult {
@@ -33,6 +35,9 @@ interface DigiLockerCheckResult {
   matched_name?: string;
   matched_state?: string;
   document_types?: string[];
+  year_data?: Record<string, Record<number, number>>; // Year-by-year timeline
+  available_years?: number[];
+  total_documents?: number;
 }
 
 /**
@@ -167,6 +172,7 @@ function generateVariants(name: string): Set<string> {
 /**
  * Extract institutions from NAD HTML
  * Handles multiple table structures across different institution categories
+ * Captures document types and can store year-by-year data
  */
 function extractInstitutionsFromHtml(html: string): NADInstitution[] {
   const institutions: Map<string, NADInstitution> = new Map();
@@ -304,18 +310,13 @@ function extractInstitutionsFromHtml(html: string): NADInstitution[] {
         institutions.set(key, {
           name: name.trim(),
           state: state && state !== "-" ? state.trim() : undefined,
-          documentTypes: documentType ? [documentType.trim()] : undefined,
+          documentTypes: documentType && documentType !== "-" ? [documentType.trim()] : [],
         });
       } else if (documentType && documentType !== "-") {
         // Add additional document type for this institution
         const docType = documentType.trim();
-        if (
-          existing.documentTypes &&
-          !existing.documentTypes.includes(docType)
-        ) {
+        if (!existing.documentTypes.includes(docType)) {
           existing.documentTypes.push(docType);
-        } else if (!existing.documentTypes) {
-          existing.documentTypes = [docType];
         }
       }
     }
@@ -457,12 +458,35 @@ export async function checkDigiLocker(
         ctx?.logger?.debug(
           `DigiLocker: Match found for ${institutionName} → ${match.name}`
         );
+
+        // Calculate total documents and available years
+        let totalDocuments = 0;
+        const availableYears = new Set<number>();
+
+        if (match.yearData) {
+          for (const docType in match.yearData) {
+            const yearCounts = match.yearData[docType];
+            if (yearCounts) {
+              for (const yearStr in yearCounts) {
+                const count = yearCounts[parseInt(yearStr, 10)];
+                if (typeof count === 'number') {
+                  totalDocuments += count;
+                  availableYears.add(parseInt(yearStr, 10));
+                }
+              }
+            }
+          }
+        }
+
         return {
           institution_name: institutionName,
           is_available: true,
           matched_name: match.name,
           matched_state: match.state,
           document_types: match.documentTypes,
+          year_data: match.yearData,
+          available_years: Array.from(availableYears).sort((a, b) => a - b),
+          total_documents: totalDocuments > 0 ? totalDocuments : undefined,
         };
       }
     }

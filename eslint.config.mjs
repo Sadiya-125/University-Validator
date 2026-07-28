@@ -15,6 +15,29 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
   ]),
   {
+    // ── Prompt 8: Verification module architecture rule
+    files: ["src/server/verification/**/*.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["*/src/server/search", "*/src/server/search/**"],
+              message:
+                "HARD RULE: Verification module cannot import from search module. Search and discovery must not influence verification.",
+            },
+            {
+              group: ["*/src/server/discovery", "*/src/server/discovery/**"],
+              message:
+                "HARD RULE: Verification module cannot import from discovery module. Verification must be independent.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     rules: {
       // ── Custom: no-restricted-imports (populated in Prompt 8)
       "no-restricted-imports": [

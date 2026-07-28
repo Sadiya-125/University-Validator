@@ -4,139 +4,176 @@
  * Institutes of National Importance are created by Acts of Parliament
  * and are NOT under UGC or AICTE. They include IITs, NITs, IIMs, AIIMS, etc.
  *
- * Source: AISHE Dashboard (https://dashboard.aishe.gov.in/hedirectory/)
- * Method: Playwright-based scraping from mat-table data
- * Scope: All 173+ INIs across all categories
+ * Source: Wikipedia (https://en.wikipedia.org/wiki/Institutes_of_National_Importance)
+ * Method: HTTP fetch + HTML table parsing with regex
+ * Scope: All 173+ INIs across all categories (as of June 2026)
  *
- * Expected data fields:
- * - AISHE Code
- * - Name
+ * Expected data fields from Wikipedia tables:
+ * - Institute (name)
+ * - City
  * - State
- * - District
- * - Web Url
- * - Year Of Establishment
- * - Location (Rural/Urban)
+ * - Founded (year)
+ * - Type (IIT, IIM, IIIT, AIIMS, NIT, IISER, NIPER, NID, SPA, NIFTEM, or University)
+ * - Specialization
  */
 
 import { RawRow, FetchContext } from "../types";
 import { BaseScraper } from "./base";
 
 /**
- * AISHE Dashboard URLs for all INI categories
+ * Parse Wikipedia HTML tables for INI institutions
  */
-const INI_URLS = [
-  "https://dashboard.aishe.gov.in/hedirectory/#/hedirectory/universityDetails/INI/indian%20institute%20of%20information%20technology",
-  "https://dashboard.aishe.gov.in/hedirectory/#/hedirectory/universityDetails/INI/indian%20institute%20of%20management",
-  "https://dashboard.aishe.gov.in/hedirectory/#/hedirectory/universityDetails/INI/indian%20institute%20of%20science%20education%20&%20research",
-  "https://dashboard.aishe.gov.in/hedirectory/#/hedirectory/universityDetails/INI/indian%20institute%20of%20technology",
-  "https://dashboard.aishe.gov.in/hedirectory/#/hedirectory/universityDetails/INI/indian%20statistical%20institute",
-  "https://dashboard.aishe.gov.in/hedirectory/#/hedirectory/universityDetails/INI/national%20institute%20of%20desig",
-  "https://dashboard.aishe.gov.in/hedirectory/#/hedirectory/universityDetails/INI/national%20institute%20of%20fashion%20technology",
-  "https://dashboard.aishe.gov.in/hedirectory/#/hedirectory/universityDetails/INI/national%20institute%20of%20technology",
-  "https://dashboard.aishe.gov.in/hedirectory/#/hedirectory/universityDetails/INI/school%20of%20planning%20&%20architecture",
-  "https://dashboard.aishe.gov.in/hedirectory/#/hedirectory/universityDetails/INI/national%20institute%20of%20pharmaceutical",
-  "https://dashboard.aishe.gov.in/hedirectory/#/hedirectory/universityDetails/INI/inicu",
-  "https://dashboard.aishe.gov.in/hedirectory/#/hedirectory/universityDetails/INI/all%20india%20institute%20of%20medical%20science",
-  "https://dashboard.aishe.gov.in/hedirectory/#/hedirectory/universityDetails/INI/others",
-];
-
-/**
- * Extract institutions from AISHE dashboard mat-table
- */
-async function extractInstitutionsFromPage(
-  url: string,
+async function parseWikipediaINIs(
+  html: string,
   ctx?: FetchContext
 ): Promise<RawRow[]> {
-  const scraper = new BaseScraper();
   const institutions: RawRow[] = [];
+  const seen = new Set<string>();
 
-  try {
-    const { page, browser } = await scraper.getPlaywrightPage();
+  // Extract all table rows from the HTML
+  // Wikipedia uses <table> with <tr> and <td> elements
+  const tableRowRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
+  const cellRegex = /<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi;
 
-    ctx?.logger?.info(`INI: Loading ${url}`);
-    await page.goto(url, { waitUntil: "networkidle", timeout: 30000 });
+  let tableMatch;
+  let tableIndex = 0;
 
-    // Wait for mat-table to load
-    await page.waitForSelector("mat-table", { timeout: 10000 });
+  // Find all tables in the document
+  while ((tableMatch = tableRowRegex.exec(html)) !== null) {
+    const rowHtml = tableMatch[1];
+    if (!rowHtml) continue;
 
-    // Extract all mat-row data
-    const rows = await page.evaluate(() => {
-      const rows: Record<string, string>[] = [];
-      const matRows = document.querySelectorAll("mat-row");
+    // Skip header rows (contain <th> tags)
+    if (rowHtml.includes("<th")) continue;
 
-      matRows.forEach((matRow) => {
-        const cells = matRow.querySelectorAll("mat-cell");
-        if (cells.length >= 7) {
-          rows.push({
-            aisheCode: cells[0]?.textContent?.trim() || "",
-            name: cells[1]?.textContent?.trim() || "",
-            state: cells[2]?.textContent?.trim() || "",
-            district: cells[3]?.textContent?.trim() || "",
-            webUrl: cells[4]?.textContent?.trim() || "",
-            yearOfEstablishment: cells[5]?.textContent?.trim() || "",
-            location: cells[6]?.textContent?.trim() || "",
-          });
-        }
-      });
+    // Extract cells from row
+    const cells: string[] = [];
+    let cellMatch;
+    cellRegex.lastIndex = 0;
 
-      return rows;
-    });
+    while ((cellMatch = cellRegex.exec(rowHtml)) !== null) {
+      const rawContent = cellMatch[1];
+      if (!rawContent) continue;
 
-    ctx?.logger?.info(`INI: Extracted ${rows.length} institutions from ${url}`);
+      let cellContent = rawContent
+        .replace(/<[^>]*>/g, "") // Remove HTML tags
+        .replace(/&nbsp;/g, " ")
+        .replace(/&amp;/g, "&")
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
+        .replace(/&quot;/g, '"')
+        .trim();
 
-    // Convert to RawRow format
-    for (const row of rows) {
-      if (row.aisheCode && row.name && row.name.length > 3) {
-        institutions.push({
-          externalId: `ini-${row.aisheCode}`,
-          name: row.name,
-          state: row.state || undefined,
-          city: row.district || undefined,
-          website: row.webUrl || undefined,
-          yearOfEstablishment: row.yearOfEstablishment || undefined,
-          location: row.location || undefined,
-          aisheCode: row.aisheCode,
-          district: row.district || undefined,
-        } as RawRow);
-      }
+      // Handle wiki links: [[Institute Name|Display Name]] → Display Name
+      cellContent = cellContent.replace(/\[\[.*?\|([^\]]+)\]\]/g, "$1");
+      cellContent = cellContent.replace(/\[\[([^\]]+)\]\]/g, "$1");
+
+      // Clean up multiple spaces
+      cellContent = cellContent.replace(/\s+/g, " ");
+
+      if (cellContent) cells.push(cellContent);
     }
 
-    await browser.close();
-  } catch (error) {
-    const errorMsg = error instanceof Error ? error.message : String(error);
-    ctx?.logger?.warn(`INI: Error scraping ${url}: ${errorMsg}`);
+    // Parse cells based on table type and column count
+    if (cells.length >= 2) {
+      let name = "";
+      let city = "";
+      let state = "";
+      let yearFounded = "";
+      let type = "";
+      let specialization = "";
+
+      // Different table structures:
+      // Most tables: Institute, City, State, Founded, Type, Specialization (6 cols)
+      // Some: Institute, City, State, Founded, Type (5 cols)
+      if (cells.length >= 4) {
+        name = cells[0] || "";
+        city = cells[1] || "";
+        state = cells[2] || "";
+        yearFounded = cells[3] || "";
+        if (cells.length >= 5) type = cells[4] || "";
+        if (cells.length >= 6) specialization = cells[5] || "";
+      } else if (cells.length >= 3) {
+        // Some rows: Institute, City, State
+        name = cells[0] || "";
+        city = cells[1] || "";
+        state = cells[2] || "";
+      } else if (cells.length >= 2) {
+        // Fallback: at least name and state/city
+        name = cells[0] || "";
+        state = cells[1] || "";
+      }
+
+      // Validate: need name and state at minimum
+      if (name && name.length >= 2 && state && state.length >= 2) {
+        // Create composite key to avoid duplicates
+        const key = `${name}|${state}`;
+
+        if (!seen.has(key)) {
+          seen.add(key);
+
+          // Sanitize name: remove footnote markers like [N 1], [14], etc.
+          name = name.replace(/\[[N\d\s,]*\]/g, "").trim();
+
+          institutions.push({
+            externalId: `ini-${name
+              .toLowerCase()
+              .replace(/[^a-z0-9]+/g, "-")
+              .replace(/^-+|-+$/g, "")}`,
+            name,
+            city: city || undefined,
+            state,
+            yearOfEstablishment: yearFounded || undefined,
+            institution_type: type || undefined,
+            specialization: specialization || undefined,
+          } as RawRow);
+        }
+      }
+    }
   }
 
+  ctx?.logger?.info(`INI: Parsed ${institutions.length} institutions from Wikipedia`);
   return institutions;
 }
 
 /**
- * Scrape INI institutions from AISHE Dashboard.
- * Iterates through all INI category URLs and extracts data.
+ * Scrape INI institutions from Wikipedia.
+ * Fetches the Wikipedia article on Institutes of National Importance and parses all tables.
  */
 export async function* scrapeINI(ctx?: FetchContext): AsyncIterable<RawRow> {
-  ctx?.logger?.info(`INI: Starting scrape from AISHE Dashboard (${INI_URLS.length} categories)`);
+  const WIKIPEDIA_URL =
+    "https://en.wikipedia.org/wiki/Institutes_of_National_Importance";
 
-  const seenInstitutions = new Set<string>();
-  let totalCount = 0;
+  ctx?.logger?.info(`INI: Fetching from Wikipedia: ${WIKIPEDIA_URL}`);
 
-  for (const url of INI_URLS) {
-    try {
-      const institutions = await extractInstitutionsFromPage(url, ctx);
+  try {
+    const scraper = new BaseScraper();
 
-      for (const inst of institutions) {
-        const key = `${inst.name}|${inst.state}`;
-        if (!seenInstitutions.has(key)) {
-          seenInstitutions.add(key);
-          totalCount++;
-          yield inst;
-        }
-      }
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      ctx?.logger?.warn(`INI: Error processing ${url}: ${errorMsg}`);
+    // Fetch the Wikipedia page
+    const response = await scraper.fetchWithRetry(WIKIPEDIA_URL);
+    if (!response) {
+      ctx?.logger?.warn("INI: Failed to fetch Wikipedia page");
+      return;
     }
-  }
 
-  ctx?.logger?.info(`INI: Scrape completed - ${totalCount} unique institutions found`);
+    // Convert response to text
+    const html = await response.text();
+    if (!html) {
+      ctx?.logger?.warn("INI: Empty response from Wikipedia");
+      return;
+    }
+
+    // Parse the HTML and extract institutions
+    const institutions = await parseWikipediaINIs(html, ctx);
+
+    ctx?.logger?.info(`INI: Extracted ${institutions.length} institutions`);
+
+    // Yield each institution
+    for (const inst of institutions) {
+      yield inst;
+    }
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    ctx?.logger?.error(`INI: Error scraping Wikipedia: ${errorMsg}`);
+  }
 }

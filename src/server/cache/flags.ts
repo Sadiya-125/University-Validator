@@ -18,7 +18,6 @@ import { eq } from "drizzle-orm";
  * All available feature flags with their environment variable defaults.
  */
 const DefaultFlags = {
-  USE_GOOGLE_CSE: false,
   USE_BROWSER: true,
   USE_LLM_REASONING: true,
   USE_LIVE_AUTHORITIES: true,

@@ -35,8 +35,6 @@ const serverEnvSchema = z.object({
 
   // Search
   SEARCH_CHAIN: z.string().default("searxng,duckduckgo"),
-  GOOGLE_CSE_ID: z.string().optional().or(z.literal("")),
-  GOOGLE_API_KEY: z.string().optional().or(z.literal("")),
 
   // LLM
   LLM_PROVIDER: z.enum(["gemini", "openai-compatible"]),
@@ -57,7 +55,6 @@ const serverEnvSchema = z.object({
   METRICS_TOKEN: z.string().optional().or(z.literal("")),
 
   // Feature Flags
-  USE_GOOGLE_CSE: z.coerce.boolean().default(false),
   USE_BROWSER: z.coerce.boolean().default(true),
   USE_LLM_REASONING: z.coerce.boolean().default(true),
   USE_LIVE_AUTHORITIES: z.coerce.boolean().default(true),
