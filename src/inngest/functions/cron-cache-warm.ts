@@ -47,12 +47,12 @@ export const cronCacheWarm = inngest.createFunction(
 
         const names = await db
           .select({
-            normalizedName: validationRuns.normalizedName,
+            inputName: validationRuns.inputName,
             requestCount: sql<number>`COUNT(*)`,
           })
           .from(validationRuns)
           .where(gte(validationRuns.createdAt, thirtyDaysAgo))
-          .groupBy(validationRuns.normalizedName)
+          .groupBy(validationRuns.inputName)
           .orderBy(sql`COUNT(*) DESC`)
           .limit(TOP_N);
 
@@ -65,9 +65,9 @@ export const cronCacheWarm = inngest.createFunction(
       const queuedCount = await step.run("queue-warm-validations", async () => {
         let count = 0;
 
-        for (const { normalizedName } of topNames) {
+        for (const { inputName } of topNames) {
           try {
-            await requestValidation(normalizedName, {
+            await requestValidation(inputName, {
               maxTier: "fast", // Only run through fast path for cache warming
               priority: "low",
               tags: {
@@ -76,7 +76,7 @@ export const cronCacheWarm = inngest.createFunction(
             });
             count++;
           } catch (error) {
-            console.warn(`[cron-cache-warm] Failed to queue ${normalizedName}:`, error);
+            console.warn(`[cron-cache-warm] Failed to queue ${inputName}:`, error);
           }
         }
 

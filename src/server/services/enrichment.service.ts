@@ -100,15 +100,41 @@ async function fetchProfileFromDatabase(
       // Merge attributes from all entries to get complete data
       let mergedAttrs: Record<string, any> = {};
       let officialName: string | undefined = undefined;
+      const sources = [];
 
       for (const entry of regEntries) {
         const attrs = entry.attributes as Record<string, any> | null;
         if (attrs) {
-          mergedAttrs = { ...mergedAttrs, ...attrs };
+          // Extract contact info from various possible attribute names
+          const extractedAttrs = {
+            state: attrs.state || attrs.State || attrs.state_name || undefined,
+            city: attrs.city || attrs.City || attrs.city_name || undefined,
+            district: attrs.district || attrs.District || attrs.district_name || undefined,
+            address: attrs.address || attrs.Address || attrs.address_text || attrs.full_address || undefined,
+            website: attrs.website || attrs.Website || attrs.url || attrs.official_website || undefined,
+            email: attrs.email || attrs.Email || attrs.email_address || undefined,
+            phone: attrs.phone || attrs.Phone || attrs.phone_number || attrs.primary_phone || undefined,
+            primaryMobileNumber: attrs.primary_mobile || attrs.primaryMobileNumber || attrs.mobile || undefined,
+            secondaryMobileNumber: attrs.secondary_mobile || attrs.secondaryMobileNumber || undefined,
+            affiliatedUniversity: attrs.affiliated_university || attrs.university || undefined,
+            type: attrs.type || attrs.Type || undefined,
+            zip: attrs.zip || attrs.pincode || attrs.postal_code || undefined,
+          };
+
+          mergedAttrs = { ...mergedAttrs, ...extractedAttrs };
         }
         if (!officialName && entry.canonicalName) {
           officialName = entry.canonicalName;
         }
+
+        // Add source info
+        sources.push({
+          authority: entry.code,
+          website: mergedAttrs?.website,
+          email: mergedAttrs?.email,
+          phone: mergedAttrs?.phone,
+          address: mergedAttrs?.address,
+        });
       }
 
       return {
@@ -120,16 +146,12 @@ async function fetchProfileFromDatabase(
         website: mergedAttrs?.website || undefined,
         email: mergedAttrs?.email || undefined,
         phone: mergedAttrs?.phone || undefined,
+        primaryMobileNumber: mergedAttrs?.primaryMobileNumber || undefined,
+        secondaryMobileNumber: mergedAttrs?.secondaryMobileNumber || undefined,
+        affiliatedUniversity: mergedAttrs?.affiliatedUniversity || undefined,
+        type: mergedAttrs?.type || undefined,
         attributes: mergedAttrs || {},
-        sources: [
-          {
-            authority: regEntries[0].code,
-            website: mergedAttrs?.website,
-            email: mergedAttrs?.email,
-            phone: mergedAttrs?.phone,
-            address: mergedAttrs?.address,
-          },
-        ],
+        sources,
       };
     }
 
@@ -148,11 +170,14 @@ async function enrichWithSearchEngine(
   existingProfile: InstitutionProfile
 ): Promise<InstitutionProfile> {
   try {
-    // Only search if we're missing critical contact info
+    // Check if we need enrichment for any field
     const needsEnrichment =
-      !existingProfile.website &&
-      !existingProfile.email &&
-      !existingProfile.phone;
+      !existingProfile.website ||
+      !existingProfile.email ||
+      !existingProfile.phone ||
+      !existingProfile.address ||
+      !existingProfile.city ||
+      !existingProfile.state;
 
     if (!needsEnrichment) {
       return existingProfile;
@@ -169,15 +194,16 @@ async function enrichWithSearchEngine(
     }
 
     console.log(
-      `[enrichWithSearchEngine] Searching for contact info: ${institutionName}`
+      `[enrichWithSearchEngine] Searching for missing info: ${institutionName}`
     );
 
-    // Search for website, email, phone
+    // Search for website, email, phone, address
     const searchFactory = getSearchFactory();
     const searchQueries = [
-      `${institutionName} official website contact`,
-      `${institutionName} email phone address`,
+      `${institutionName} official website contact address`,
+      `${institutionName} email phone address city state`,
       `${institutionName} college contact details`,
+      `"${institutionName}" headquarters location`,
     ];
 
     let enrichedData: Partial<InstitutionProfile> = {};
@@ -192,6 +218,7 @@ async function enrichWithSearchEngine(
         for (const result of response.results) {
           const snippet = (result.snippet || "").toLowerCase();
           const title = (result.title || "").toLowerCase();
+          const fullText = `${title} ${snippet}`;
 
           // Look for email
           if (!enrichedData.email) {
@@ -203,7 +230,7 @@ async function enrichWithSearchEngine(
             }
           }
 
-          // Look for phone
+          // Look for phone (Indian format)
           if (!enrichedData.phone) {
             const phoneMatch = result.snippet?.match(/(?:\+91|0)?[\s.-]?[6-9]\d{2}[\s.-]?\d{3,4}[\s.-]?\d{3,4}/g);
             if (phoneMatch?.[0]) {
@@ -215,10 +242,60 @@ async function enrichWithSearchEngine(
           if (!enrichedData.website && result.url) {
             enrichedData.website = result.url;
           }
+
+          // Look for address and location info from snippets
+          if (!enrichedData.address && result.snippet) {
+            // Try to extract address patterns
+            const addressPatterns = [
+              /(?:address|located at|headquarters)[:\s]+([^,\n]+(?:[,][^,\n]+)?)/gi,
+              /^(?:.*?(?:Hyderabad|Mumbai|Delhi|Bangalore|Pune|Chennai)[^,\n]*)/i,
+            ];
+
+            for (const pattern of addressPatterns) {
+              const match = result.snippet.match(pattern);
+              if (match) {
+                enrichedData.address = match[1] || match[0];
+                enrichedData.address = enrichedData.address.substring(0, 500);
+                break;
+              }
+            }
+          }
+
+          // Look for city/state from patterns
+          const cityStateMatch = fullText.match(
+            /(Delhi|Mumbai|Hyderabad|Bangalore|Pune|Chennai|Kolkata|Ahmedabad|Chandigarh|Jaipur|Lucknow|Noida|Gurgaon|Bhopal|Indore|Surat|Vadodara)/i
+          );
+          if (cityStateMatch && !enrichedData.city) {
+            enrichedData.city = cityStateMatch[1];
+          }
+
+          // Map city to state
+          if (enrichedData.city && !enrichedData.state) {
+            const cityToState: Record<string, string> = {
+              'Delhi': 'Delhi',
+              'Mumbai': 'Maharashtra',
+              'Hyderabad': 'Telangana',
+              'Bangalore': 'Karnataka',
+              'Pune': 'Maharashtra',
+              'Chennai': 'Tamil Nadu',
+              'Kolkata': 'West Bengal',
+              'Ahmedabad': 'Gujarat',
+              'Chandigarh': 'Chandigarh',
+              'Jaipur': 'Rajasthan',
+              'Lucknow': 'Uttar Pradesh',
+              'Noida': 'Uttar Pradesh',
+              'Gurgaon': 'Haryana',
+              'Bhopal': 'Madhya Pradesh',
+              'Indore': 'Madhya Pradesh',
+              'Surat': 'Gujarat',
+              'Vadodara': 'Gujarat',
+            };
+            enrichedData.state = cityToState[enrichedData.city];
+          }
         }
 
-        // If we found the main contact info, stop searching
-        if (enrichedData.email || enrichedData.phone || enrichedData.website) {
+        // If we found most contact info, stop searching
+        if (enrichedData.email && enrichedData.phone && enrichedData.website) {
           break;
         }
       } catch (error) {
@@ -256,7 +333,7 @@ export async function saveEnrichedInstitution(
       .limit(1);
 
     if (existing.length === 0 && profile.officialName) {
-      // Create new institution record
+      // Create new institution record with all available data
       const result = await db
         .insert(institutions)
         .values({
@@ -268,17 +345,21 @@ export async function saveEnrichedInstitution(
           district: profile.district || undefined,
           address: profile.address || undefined,
           website: profile.website || undefined,
+          lastValidatedAt: new Date(),
+          validUntil: new Date(Date.now() + 180 * 24 * 60 * 60 * 1000), // 6 months validity
         })
         .returning({ id: institutions.id });
 
       if (result.length > 0) {
-        const institutionId = result[0].id;
+        const institutionId = result[0]!.id;
 
         // Add contacts if available
         const contacts: Array<{ kind: 'email' | 'phone' | 'website'; value: string }> = [];
         if (profile.email) contacts.push({ kind: 'email', value: profile.email });
         if (profile.phone) contacts.push({ kind: 'phone', value: profile.phone });
         if (profile.website) contacts.push({ kind: 'website', value: profile.website });
+        if (profile.primaryMobileNumber) contacts.push({ kind: 'phone', value: profile.primaryMobileNumber });
+        if (profile.secondaryMobileNumber) contacts.push({ kind: 'phone', value: profile.secondaryMobileNumber });
 
         for (const contact of contacts) {
           try {

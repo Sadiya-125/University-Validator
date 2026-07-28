@@ -247,12 +247,37 @@ export async function POST(request: NextRequest) {
         getRegistryAttributes(normalized),
       ]);
 
+      // Save enriched institution to database if not already there
+      try {
+        const { saveEnrichedInstitution } = await import("@/server/services/enrichment.service");
+        await saveEnrichedInstitution(normalized, profile);
+      } catch (error) {
+        console.warn("[POST /api/validate] Failed to save enriched institution:", error);
+        // Continue anyway - saving is best-effort
+      }
+
       // Calculate confidence based on data completeness
       const confidence = calculateConfidence(
         fastPathResult.data.verdict,
         profile,
         authorities
       );
+
+      // Format profile data - no "Not available" fields
+      const formattedProfile = {
+        officialName: profile.officialName || normalized,
+        affiliatedUniversity: profile.affiliatedUniversity,
+        type: profile.type,
+        website: profile.website,
+        email: profile.email,
+        phone: profile.phone,
+        primaryMobileNumber: profile.primaryMobileNumber,
+        secondaryMobileNumber: profile.secondaryMobileNumber,
+        address: profile.address,
+        state: profile.state,
+        city: profile.city,
+        district: profile.district,
+      };
 
       return NextResponse.json(
         {
@@ -266,7 +291,7 @@ export async function POST(request: NextRequest) {
           evidence: [],
           runs: [],
           authorities: authorities,
-          profile: profile,
+          profile: formattedProfile,
           registryAttributes: registryAttrs,
         },
         { status: 200 }

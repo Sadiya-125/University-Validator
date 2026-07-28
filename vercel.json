@@ -1,9 +1,9 @@
 {
   "functions": {
-    "api/inngest/**": {
+    "src/app/api/inngest/**": {
       "maxDuration": 300
     },
-    "api/validate/**": {
+    "src/app/api/validate/**": {
       "maxDuration": 300
     }
   },
