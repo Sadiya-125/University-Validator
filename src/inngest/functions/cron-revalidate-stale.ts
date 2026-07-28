@@ -30,9 +30,11 @@ export const cronRevalidateStale = inngest.createFunction(
     name: "Revalidate Stale Records",
 
     // Run every 6 hours
-    trigger: {
-      cron: CRON_SCHEDULE,
-    },
+    triggers: [
+      {
+        cron: CRON_SCHEDULE,
+      },
+    ],
 
     // Only one execution at a time
     concurrency: {
