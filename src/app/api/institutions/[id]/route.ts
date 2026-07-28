@@ -159,9 +159,9 @@ const mockInstitutionDetails: Record<
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id } = params;
+  const { id } = await params;
 
   try {
     // Validate ID format
@@ -201,7 +201,7 @@ export async function GET(
       { status: 200 }
     );
   } catch (error) {
-    console.error(`[GET /api/institutions/${params.id}] Error:`, error);
+    console.error(`[GET /api/institutions/${id}] Error:`, error);
 
     return NextResponse.json(
       {

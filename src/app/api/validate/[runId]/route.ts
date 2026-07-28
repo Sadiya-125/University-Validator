@@ -68,9 +68,9 @@ const validationRuns = new Map<
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { runId: string } }
+  { params }: { params: Promise<{ runId: string }> }
 ) {
-  const { runId } = params;
+  const { runId } = await params;
 
   try {
     // Validate runId format
@@ -160,7 +160,7 @@ export async function GET(
       { status: 500 }
     );
   } catch (error) {
-    console.error(`[GET /api/validate/${params.runId}] Error:`, error);
+    console.error(`[GET /api/validate/${runId}] Error:`, error);
 
     return NextResponse.json(
       {

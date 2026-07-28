@@ -271,7 +271,7 @@ export function expandVariants(normalized: string): string[] {
     // Try pattern-based expansions with full suffix expansion
     for (const { pattern, expand } of EXPANSION_PATTERNS) {
       const match = normalized.match(pattern);
-      if (match) {
+      if (match && match[2]) {
         const suffix = match[2];
         // Expand any abbreviations in the suffix too
         const suffixWords = suffix.split(/\s+/);

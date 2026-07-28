@@ -1,7 +1,7 @@
 /**
  * Search provider interface and types
  *
- * Defines the abstract interface for search providers (SearXNG, DuckDuckGo, Google CSE).
+ * Defines the abstract interface for search providers (SearXNG, DuckDuckGo).
  * Wikidata is NOT a SearchProvider (it's an IdentityResolver).
  *
  * This is the ONLY part of the codebase permitted to perform open web search.
@@ -46,7 +46,7 @@ export interface SearchOptions {
  */
 export interface SearchProvider {
   /**
-   * Unique provider name (e.g., "searxng", "duckduckgo", "google-cse")
+   * Unique provider name (e.g., "searxng", "duckduckgo")
    */
   name: string;
 
@@ -61,7 +61,7 @@ export interface SearchProvider {
   health(): Promise<boolean>;
 
   /**
-   * Optional: Report remaining quota for this provider (e.g., Google CSE daily quota)
+   * Optional: Report remaining quota for this provider
    */
   quotaRemaining?(): Promise<number | undefined>;
 }

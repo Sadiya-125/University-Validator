@@ -154,9 +154,9 @@ function createUnsafeSSLFetch(): typeof fetch {
     },
   });
 
-  return async (url: string | URL, init?: RequestInit) => {
-    // @ts-ignore - undici.fetch supports agent option
-    return undici.fetch(url, {
+  return async (url: string | URL | Request, init?: RequestInit): Promise<Response> => {
+    // @ts-ignore - undici.fetch supports agent option and Request
+    return undici.fetch(url as any, {
       ...init,
       dispatcher: agent,
     });

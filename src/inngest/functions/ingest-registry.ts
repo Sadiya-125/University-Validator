@@ -100,10 +100,13 @@ function getConnector(authority: string): AuthorityConnector {
 /**
  * Main ingest-registry function
  */
-export const ingestRegistry = (inngest.createFunction as any)(
+export const ingestRegistry = inngest.createFunction(
   {
     id: "ingest-registry",
     name: "Ingest Registry",
+
+    // Triggers
+    triggers: [{ event: "registry/ingest.requested" }],
 
     // Concurrency limits
     concurrency: [
@@ -120,11 +123,10 @@ export const ingestRegistry = (inngest.createFunction as any)(
     ],
 
     // Timeout after 30 minutes (registries can be large)
-    timeout: "30m",
+    timeouts: {
+      finish: "30m",
+    },
   },
-
-  // Events this function responds to and handler
-  { event: "registry/ingest.requested" },
 
   async ({ event, step }: any) => {
     const { authority, force = false, since } = (event as any).data;
@@ -188,16 +190,14 @@ export const ingestRegistry = (inngest.createFunction as any)(
       });
 
       // Step 5: Emit batch created event
-      await step.run("emit-batch-created", async () => {
-        await inngest.send({
-          name: "batch/created",
-          data: {
-            batchId,
-            institutionCount: upsertedCount,
-            source: authority,
-            createdAt: new Date(),
-          },
-        });
+      await step.sendEvent("emit-batch-created", {
+        name: "batch/created",
+        data: {
+          batchId,
+          institutionCount: upsertedCount,
+          source: authority,
+          createdAt: new Date(),
+        },
       });
 
       // Step 6: Update registry metadata
@@ -233,12 +233,12 @@ export const ingestRegistry = (inngest.createFunction as any)(
 /**
  * Scheduled registry ingest (daily for all authorities)
  */
-export const scheduleRegistryIngest = (inngest.createFunction as any)(
+export const scheduleRegistryIngest = inngest.createFunction(
   {
     id: "schedule-registry-ingest",
     name: "Schedule Registry Ingest",
+    triggers: [{ cron: "0 2 * * *" }], // Daily at 2 AM UTC
   },
-  { cron: "0 2 * * *" }, // Daily at 2 AM UTC
   async ({ step }: any) => {
     const authorities = ["aishe", "ugc", "nad"];
 

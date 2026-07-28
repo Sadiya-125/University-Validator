@@ -10,10 +10,10 @@
 
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Activity, Database, FileText, Package2, Settings, BarChart3, Menu, X } from "lucide-react";
+import { Activity, Database, FileText, Package2, Settings, BarChart3, Menu, X, Shield } from "lucide-react";
 
 /**
  * Navigation items in sidebar
@@ -36,6 +36,18 @@ export function Shell({ children }: ShellProps) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
 
+  // Handle ESC key to close search modal
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && isSearchOpen) {
+        setIsSearchOpen(false);
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [isSearchOpen]);
+
   // Check if we're on API routes or special pages
   if (pathname?.startsWith("/api") || pathname?.startsWith("/dev/")) {
     return <>{children}</>;
@@ -52,10 +64,10 @@ export function Shell({ children }: ShellProps) {
         `}
       >
         {/* Logo */}
-        <div className="flex items-center justify-between p-4 border-b border-border">
+        <div className="flex items-center justify-between px-4 py-5 border-b border-border">
           <Link href="/" className="flex items-center gap-2 font-display font-bold text-lg">
+            <Shield size={24} className="text-primary flex-shrink-0" />
             {sidebarOpen && "UniValidator"}
-            {!sidebarOpen && <div className="w-8 h-8 bg-primary rounded-md" />}
           </Link>
         </div>
 
@@ -63,8 +75,9 @@ export function Shell({ children }: ShellProps) {
         <nav className="flex-1 overflow-y-auto py-4">
           <ul className="space-y-2 px-2">
             {NAV_ITEMS.map((item) => {
-              const isActive =
-                item.exact ? pathname === item.href : pathname?.startsWith(item.href);
+              const isActive = item.exact
+                ? pathname === item.href
+                : pathname?.startsWith(item.href);
 
               return (
                 <li key={item.href}>
@@ -104,7 +117,7 @@ export function Shell({ children }: ShellProps) {
       {/* Main Content */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Top Bar */}
-        <header className="bg-bg-secondary border-b border-border px-6 py-4 flex items-center justify-between h-16 flex-shrink-0">
+        <header className="bg-bg-secondary border-b border-border px-6 py-4 flex items-center justify-between h-16 flex-shrink-0 w-full">
           {/* Breadcrumbs */}
           <nav className="flex items-center gap-2 text-sm text-text-secondary">
             <Link href="/" className="hover:text-text transition-colors">
@@ -139,9 +152,7 @@ export function Shell({ children }: ShellProps) {
 
         {/* Page Content */}
         <main className="flex-1 overflow-auto">
-          <div className="p-6">
-            {children}
-          </div>
+          <div className="p-6">{children}</div>
         </main>
       </div>
 
@@ -161,9 +172,7 @@ export function Shell({ children }: ShellProps) {
               className="w-full px-4 py-2 bg-bg rounded-md border border-border text-text placeholder-text-tertiary focus:outline-none focus:border-primary"
               autoFocus
             />
-            <div className="mt-4 text-center text-text-secondary text-sm">
-              Press ESC to close
-            </div>
+            <div className="mt-4 text-center text-text-secondary text-sm">Press ESC to close</div>
           </div>
         </div>
       )}

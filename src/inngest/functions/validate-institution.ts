@@ -37,10 +37,13 @@ function getIdempotencyKey(normalizedName: string): string {
 /**
  * Main validate-institution function
  */
-export const validateInstitution = (inngest.createFunction as any)(
+export const validateInstitution = inngest.createFunction(
   {
     id: "validate-institution",
     name: "Validate Institution",
+
+    // Triggers
+    triggers: [{ event: "validation/requested" }],
 
     // Concurrency limits
     concurrency: [
@@ -58,14 +61,7 @@ export const validateInstitution = (inngest.createFunction as any)(
 
     // Idempotency: prevent duplicate validations on same day
     idempotency: "event.data.normalizedName",
-
-    // Timeout after 5 minutes
-    timeout: "5m",
   },
-
-  // Events this function responds to
-  { event: "validation/requested" },
-
   // Main handler
   async ({ event, step }: any) => {
     const { normalizedName, maxTier = "finalize", tags = {}, priority = "normal" } = event.data;
@@ -170,10 +166,11 @@ export const validateInstitution = (inngest.createFunction as any)(
 /**
  * Retry dead-letter handler
  */
-export const validateInstitutionRetry = (inngest.createFunction as any)(
+export const validateInstitutionRetry = inngest.createFunction(
   {
     id: "validate-institution-retry",
     name: "Retry Failed Validation",
+    triggers: [{ event: "deadletter/retry" }],
     concurrency: [
       {
         scope: "fn",
@@ -181,7 +178,6 @@ export const validateInstitutionRetry = (inngest.createFunction as any)(
       },
     ],
   },
-  { event: "deadletter/retry" },
   async ({ event, step }: any) => {
     const { originalData, retryAttempt } = event.data;
 

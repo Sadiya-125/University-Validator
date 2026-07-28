@@ -148,7 +148,6 @@ export async function enforceRateLimit(
 export const ProviderLimits = {
   SEARXNG: { limit: 30, windowSeconds: 60 }, // 30 per minute
   DUCKDUCKGO: { limit: 60, windowSeconds: 120 }, // 60 per 2 minutes (max 1 req per 2s global)
-  GOOGLE_CSE: { limit: 100, windowSeconds: 86400 }, // 100 per day (free tier)
   WIKIDATA: { limit: 500, windowSeconds: 3600 }, // 500 per hour
   WEBSITE_FETCH: { limit: 10, windowSeconds: 60 }, // 10 per minute per domain
   LLM: { limit: 100, windowSeconds: 60 }, // 100 per minute globally

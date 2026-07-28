@@ -13,10 +13,10 @@ import { z } from "zod";
  * Address structure (flat)
  */
 export const AddressSchema = z.object({
-  street?: z.string().optional(),
+  street: z.string().optional(),
   city: z.string(),
   state: z.string().optional(),
-  postal_code?: z.string().optional(),
+  postal_code: z.string().optional(),
   country: z.string().default("India"),
   sourceRefs: z.array(z.string()).describe("Evidence refs (e1, e2, ...)"),
 });
@@ -29,7 +29,7 @@ export type Address = z.infer<typeof AddressSchema>;
 export const ContactsSchema = z.object({
   emails: z.array(z.string().email()).default([]),
   phones: z.array(z.string()).default([]),
-  website?: z.string().url().optional(),
+  website: z.string().url().optional(),
   sourceRefs: z.array(z.string()).describe("Evidence refs (e1, e2, ...)"),
 });
 
@@ -39,11 +39,11 @@ export type Contacts = z.infer<typeof ContactsSchema>;
  * Social media links (flat)
  */
 export const SocialLinksSchema = z.object({
-  facebook?: z.string().url().optional(),
-  twitter?: z.string().url().optional(),
-  linkedin?: z.string().url().optional(),
-  youtube?: z.string().url().optional(),
-  instagram?: z.string().url().optional(),
+  facebook: z.string().url().optional(),
+  twitter: z.string().url().optional(),
+  linkedin: z.string().url().optional(),
+  youtube: z.string().url().optional(),
+  instagram: z.string().url().optional(),
   sourceRefs: z.array(z.string()).describe("Evidence refs (e1, e2, ...)"),
 });
 

@@ -18,11 +18,130 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { sql, eq, inArray } from "drizzle-orm";
 import { requestValidation } from "@/inngest";
 import { validate } from "@/server/services/validation.service";
+import { enrichInstitution, getRegistryAttributes } from "@/server/services/enrichment.service";
 import { getDb } from "@/server/db/client";
 import { getRedis } from "@/server/cache/redis";
+import { institutions, institutionIdentities, authorities, registrySnapshots, registryEntries } from "@/server/db/schema";
 import { randomUUID } from "crypto";
+
+/**
+ * Calculate confidence score based on profile completeness and verdict
+ */
+function calculateConfidence(
+  verdict: string,
+  profile: any,
+  authorities: any[]
+): number {
+  let confidence = 0.5; // Base confidence
+
+  // Verdict strength (genuine/likely_genuine vs unknown/unverified)
+  if (verdict === "genuine" || verdict === "Genuine") {
+    confidence += 0.3;
+  } else if (verdict === "likely_genuine" || verdict === "Likely Genuine") {
+    confidence += 0.2;
+  } else if (verdict === "NEEDS_REVIEW" || verdict === "Needs Review") {
+    confidence += 0.05;
+  }
+
+  // Profile completeness
+  if (profile) {
+    const contactFields = [
+      profile.email,
+      profile.phone,
+      profile.website,
+      profile.address,
+    ].filter((f) => f).length;
+    const locationFields = [
+      profile.state,
+      profile.city,
+      profile.district,
+    ].filter((f) => f).length;
+
+    // Add points for each contact field (up to 0.1)
+    confidence += (contactFields / 4) * 0.1;
+    // Add points for location fields (up to 0.1)
+    confidence += (locationFields / 3) * 0.1;
+  }
+
+  // Authority matches
+  if (authorities && authorities.length > 0) {
+    confidence += Math.min(0.1, authorities.length * 0.05);
+  }
+
+  return Math.min(1, Math.max(0, confidence));
+}
+
+/**
+ * Fetch authorities for an institution by normalized name
+ */
+async function fetchAuthoritiesForInstitution(db: any, normalizedName: string) {
+  try {
+    // First try institutions table
+    const inst = await db
+      .select({ id: institutions.id })
+      .from(institutions)
+      .where(eq(institutions.normalizedName, normalizedName))
+      .limit(1);
+
+    if (inst.length > 0) {
+      // Get identities/authorities for this institution
+      const identities = await db
+        .select({
+          source: institutionIdentities.source,
+          authName: authorities.display_name,
+        })
+        .from(institutionIdentities)
+        .leftJoin(authorities, eq(institutionIdentities.source, authorities.authority_code))
+        .where(eq(institutionIdentities.institutionId, inst[0].id));
+
+      return identities.map((row: any) => ({
+        name: row.authName || row.source,
+        code: row.source,
+        found: true,
+        snapshotDate: new Date().toISOString().split('T')[0],
+        rowCount: 0,
+      }));
+    }
+
+    // Fallback: check registry_entries for raw data
+    const regEntries = await db
+      .select({
+        code: registryEntries.code,
+      })
+      .from(registryEntries)
+      .where(eq(registryEntries.normalizedName, normalizedName))
+      .limit(10);
+
+    if (regEntries.length > 0) {
+      const codes = [...new Set(regEntries.map((r: any) => r.code))];
+      const auths = await db
+        .select({
+          code: registrySnapshots.code,
+          name: authorities.display_name,
+          validTo: registrySnapshots.validTo,
+        })
+        .from(registrySnapshots)
+        .leftJoin(authorities, eq(registrySnapshots.code, authorities.authority_code))
+        .where(inArray(registrySnapshots.code, codes as any));
+
+      return auths.map((row: any) => ({
+        name: row.name || row.code,
+        code: row.code,
+        found: true,
+        snapshotDate: row.validTo ? new Date(row.validTo).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+        rowCount: 0,
+      }));
+    }
+
+    return [];
+  } catch (error) {
+    console.error("[fetchAuthoritiesForInstitution] Error:", error);
+    return [];
+  }
+}
 
 /**
  * Request schema
@@ -119,16 +238,36 @@ export async function POST(request: NextRequest) {
     // Fast path: verdict returned within budget
     if (fastPathResult.success && !("timedOut" in fastPathResult)) {
       const elapsedMs = Date.now() - startTime;
+      const db = getDb()!;
+
+      // Fetch authorities and enrich profile data in parallel
+      const [authorities, profile, registryAttrs] = await Promise.all([
+        fetchAuthoritiesForInstitution(db, normalized),
+        enrichInstitution(normalized, false),
+        getRegistryAttributes(normalized),
+      ]);
+
+      // Calculate confidence based on data completeness
+      const confidence = calculateConfidence(
+        fastPathResult.data.verdict,
+        profile,
+        authorities
+      );
 
       return NextResponse.json(
         {
-          success: true,
+          id: runId,
+          institutionName: normalized,
           verdict: fastPathResult.data.verdict,
-          score: fastPathResult.data.decision?.score || 0.5,
-          confidence: fastPathResult.data.decision?.confidence || 0,
-          cached: true,
-          runId,
-          elapsedMs,
+          confidence: confidence,
+          status: "completed",
+          responseTime: elapsedMs,
+          source: "cache",
+          evidence: [],
+          runs: [],
+          authorities: authorities,
+          profile: profile,
+          registryAttributes: registryAttrs,
         },
         { status: 200 }
       );

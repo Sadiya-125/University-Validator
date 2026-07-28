@@ -1,25 +1,15 @@
-import type { Metadata } from "next";
-import { Bricolage_Grotesque, JetBrains_Mono } from "next/font/google";
+import type { Metadata, Viewport } from "next";
+import { Bricolage_Grotesque } from "next/font/google";
 import "./globals.css";
 import { Shell } from "@/components/shell";
 
 /**
- * Display typeface for headings and brand
+ * Primary typeface for all text (headings, body, and code)
  */
 const bricolage = Bricolage_Grotesque({
   subsets: ["latin"],
   weight: ["200", "300", "400", "500", "600", "700", "800"],
-  variable: "--font-display",
-  display: "swap",
-});
-
-/**
- * Monospace typeface for IDs, hashes, timestamps
- */
-const jetbrainsMono = JetBrains_Mono({
-  subsets: ["latin"],
-  weight: ["400", "500", "600"],
-  variable: "--font-mono",
+  variable: "--font-body",
   display: "swap",
 });
 
@@ -29,14 +19,15 @@ export const metadata: Metadata = {
   generator: "Next.js",
   applicationName: "University Validator",
   referrer: "strict-origin-when-cross-origin",
+};
+
+export const viewport: Viewport = {
   themeColor: "#2563eb",
   colorScheme: "dark light",
-  viewport: {
-    width: "device-width",
-    initialScale: 1,
-    maximumScale: 5,
-    userScalable: true,
-  },
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
+  userScalable: true,
 };
 
 export default function RootLayout({
@@ -45,12 +36,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`${bricolage.variable} ${jetbrainsMono.variable}`}>
+    <html lang="en" className={bricolage.variable}>
       <head>
         <meta name="color-scheme" content="dark light" />
         <meta name="supported-color-schemes" content="dark light" />
       </head>
-      <body className="dark">
+      <body className="dark" suppressHydrationWarning>
         <Shell>{children}</Shell>
       </body>
     </html>

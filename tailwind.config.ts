@@ -2,15 +2,12 @@ import type { Config } from "tailwindcss";
 
 const config: Config = {
   darkMode: "class",
-  content: [
-    "./src/components/**/*.{js,ts,jsx,tsx,mdx}",
-    "./src/app/**/*.{js,ts,jsx,tsx,mdx}",
-  ],
+  content: ["./src/app/**/*.{js,ts,jsx,tsx,mdx}", "./src/components/**/*.{js,ts,jsx,tsx,mdx}"],
   theme: {
     extend: {
       fontFamily: {
         display: ["var(--font-display)", "system-ui", "sans-serif"],
-        sans: ["system-ui", "Inter", "-apple-system", "BlinkMacSystemFont", "Segoe UI", "sans-serif"],
+        sans: ["var(--font-sans)", "system-ui", "sans-serif"],
         mono: ["var(--font-mono)", "Menlo", "monospace"],
       },
       colors: {
@@ -19,10 +16,10 @@ const config: Config = {
         accent: "var(--color-accent)",
 
         // Verdict colors (semantic meaning)
-        success: "var(--color-success)",    // Genuine
-        warning: "var(--color-warning)",    // Unknown/Likely Genuine
-        danger: "var(--color-danger)",      // Fake
-        info: "var(--color-accent)",        // Likely Genuine
+        success: "var(--color-success)", // Genuine
+        warning: "var(--color-warning)", // Unknown/Likely Genuine
+        danger: "var(--color-danger)", // Fake
+        info: "var(--color-accent)", // Likely Genuine
 
         // Base neutral grays
         bg: "var(--color-bg)",

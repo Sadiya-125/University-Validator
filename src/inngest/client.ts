@@ -207,3 +207,21 @@ export async function queueBatchItem(event: BatchItemQueuedEvent) {
     data: event,
   });
 }
+
+/**
+ * Helper to request batch processing
+ */
+export async function requestBatchProcess(
+  batchId: number,
+  opts?: { name?: string; total?: number; priority?: string }
+) {
+  return inngest.send({
+    name: "batch/created",
+    data: {
+      batchId: String(batchId),
+      institutionCount: opts?.total || 0,
+      source: "csv",
+      createdAt: new Date(),
+    },
+  });
+}

@@ -31,6 +31,17 @@ export type Result<T> =
   | { success: false; error: string; code?: string };
 
 /**
+ * Authority match data
+ */
+export interface AuthorityMatch {
+  name: string;
+  code?: string;
+  found: boolean;
+  snapshotDate: string;
+  rowCount: number;
+}
+
+/**
  * Fast path result (L0/L1)
  */
 export interface FastPathResult {
@@ -39,6 +50,7 @@ export interface FastPathResult {
   source?: string; // "redis", "institutions_db", null
   stale: boolean; // true if >freshness_days old
   cachedAt?: Date;
+  authorities?: AuthorityMatch[]; // Authorities where this institution was found
 }
 
 /**
@@ -108,20 +120,76 @@ export async function resolveFastPath(
     // Check institutions_db (L1)
     if (opts.db) {
       const rows = await opts.db.query(
-        "SELECT verdict, cached_at FROM institutions WHERE normalized_name = ? LIMIT 1",
+        "SELECT id, verdict, cached_at FROM institutions WHERE normalized_name = ? LIMIT 1",
         [normalized]
-      ) as Array<{ verdict: string; cached_at: Date }>;
+      ) as Array<{ id: number; verdict: string; cached_at: Date }>;
 
       if (rows.length > 0) {
-        const { verdict, cached_at } = rows[0];
+        const { id: institutionId, verdict, cached_at } = rows[0];
         const stale = Date.now() - cached_at.getTime() > 7 * 24 * 60 * 60 * 1000;
         const duration = Date.now() - start;
 
-        opts.onProgress?.(step, "complete", { duration, cacheHit: true, source: "institutions_db", stale });
+        // Query for authorities linked to this institution
+        const authRows = await opts.db.query(
+          `SELECT DISTINCT ii.source as code, a.display_name as name, rs.valid_to, rs.row_count
+           FROM institution_identities ii
+           LEFT JOIN authorities a ON ii.source = a.authority_code
+           LEFT JOIN registry_snapshots rs ON rs.code = ii.source
+           WHERE ii.institution_id = ?
+           ORDER BY ii.created_at DESC`,
+          [institutionId]
+        ) as Array<{ code: string; name: string; valid_to?: Date; row_count?: number }>;
+
+        const authorities: AuthorityMatch[] = authRows.map(row => ({
+          name: row.name || row.code,
+          code: row.code,
+          found: true,
+          snapshotDate: row.valid_to ? new Date(row.valid_to).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+          rowCount: row.row_count || 0,
+        }));
+
+        opts.onProgress?.(step, "complete", { duration, cacheHit: true, source: "institutions_db", stale, authoritiesCount: authorities.length });
 
         return {
           success: true,
-          data: { hit: true, verdict, source: "institutions_db", stale, cachedAt: cached_at },
+          data: { hit: true, verdict, source: "institutions_db", stale, cachedAt: cached_at, authorities },
+        };
+      }
+    }
+
+    // Check registry_entries (fallback L1.5 - raw registry data)
+    if (opts.db) {
+      const regRows = await opts.db.query(
+        `SELECT DISTINCT code FROM registry_entries WHERE LOWER(normalized_name) = ? LIMIT 10`,
+        [normalized]
+      ) as Array<{ code: string }>;
+
+      if (regRows.length > 0) {
+        const duration = Date.now() - start;
+
+        // Map codes to authority data
+        const authRows = await opts.db.query(
+          `SELECT DISTINCT re.code as code, a.display_name as name, rs.valid_to, rs.row_count
+           FROM registry_entries re
+           LEFT JOIN authorities a ON re.code = a.authority_code
+           LEFT JOIN registry_snapshots rs ON rs.code = re.code
+           WHERE LOWER(re.normalized_name) = ?`,
+          [normalized]
+        ) as Array<{ code: string; name: string; valid_to?: Date; row_count?: number }>;
+
+        const authorities: AuthorityMatch[] = authRows.map(row => ({
+          name: row.name || row.code,
+          code: row.code,
+          found: true,
+          snapshotDate: row.valid_to ? new Date(row.valid_to).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+          rowCount: row.row_count || 0,
+        }));
+
+        opts.onProgress?.(step, "complete", { duration, cacheHit: true, source: "registry_entries", stale: false, authoritiesCount: authorities.length });
+
+        return {
+          success: true,
+          data: { hit: false, source: "registry_entries", stale: false, authorities },
         };
       }
     }
@@ -132,7 +200,7 @@ export async function resolveFastPath(
 
     return {
       success: true,
-      data: { hit: false, source: null, stale: false },
+      data: { hit: false, source: null, stale: false, authorities: [] },
     };
   } catch (error) {
     const duration = Date.now() - start;
@@ -383,7 +451,7 @@ export async function finalizeValidation(
 export async function validate(
   input: Normalizable,
   opts: ValidationOptions
-): Promise<Result<{ verdict: string; decision?: ScoringDecision }>> {
+): Promise<Result<{ verdict: string; decision?: ScoringDecision; authorities?: AuthorityMatch[] }>> {
   const { runId, maxTier = "finalize", onProgress } = opts;
 
   // Check state transitions (§12 rules)
@@ -405,7 +473,7 @@ export async function validate(
       onProgress?.("validate", "complete", { tier: "fast", verdict: fastRes.data.verdict, stale: fastRes.data.stale });
       return {
         success: true,
-        data: { verdict: fastRes.data.verdict! },
+        data: { verdict: fastRes.data.verdict!, authorities: fastRes.data.authorities },
       };
     }
 

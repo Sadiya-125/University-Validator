@@ -4,7 +4,6 @@ D:\University Validation\university-validator\MASTER-PLAN.md
 D:\University Validation\university-validator\README.md
 D:\University Validation\university-validator\docs\ARCHITECTURE.md
 D:\University Validation\university-validator\docs\CONNECTOR_PROGRESS.md
-D:\University Validation\university-validator\docs\GOOGLE_CSE_SETUP.md
 D:\University Validation\university-validator\docs\IMPLEMENTATION_GUIDE.md
 D:\University Validation\university-validator\docs\LEGACY-NOTES.md
 D:\University Validation\university-validator\docs\SOURCES.md

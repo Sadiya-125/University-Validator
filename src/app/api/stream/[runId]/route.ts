@@ -38,9 +38,9 @@ const streamConnections = new Map<
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { runId: string } }
+  { params }: { params: Promise<{ runId: string }> }
 ) {
-  const { runId } = params;
+  const { runId } = await params;
 
   // Validate runId
   if (!runId || typeof runId !== "string" || runId.length < 10) {

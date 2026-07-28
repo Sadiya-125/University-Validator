@@ -145,12 +145,12 @@ export async function GET(request: NextRequest) {
     // Parse and validate query parameters
     const searchParams = request.nextUrl.searchParams;
     const params = {
-      cursor: searchParams.get("cursor") || undefined,
+      cursor: searchParams.get("cursor") ?? undefined,
       limit: searchParams.get("limit") ? parseInt(searchParams.get("limit")!) : 50,
-      search: searchParams.get("search") || undefined,
-      verdict: searchParams.get("verdict") as any,
-      sortBy: searchParams.get("sortBy") as any,
-      sortOrder: searchParams.get("sortOrder") as any,
+      search: searchParams.get("search") ?? undefined,
+      verdict: searchParams.get("verdict") ?? undefined,
+      sortBy: searchParams.get("sortBy") ?? undefined,
+      sortOrder: searchParams.get("sortOrder") ?? undefined,
     };
 
     const validated = ListInstitutionsSchema.parse(params);

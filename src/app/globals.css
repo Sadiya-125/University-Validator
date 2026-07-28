@@ -1,4 +1,6 @@
-@import "@tailwindcss/postcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
 /* ============================================================================
    Design System: Color Tokens & CSS Variables
@@ -58,9 +60,10 @@
     --radius-lg: 8px;
 
     /* Typography */
+    --font-body: "Bricolage Grotesque", system-ui, sans-serif;
     --font-display: "Bricolage Grotesque", system-ui, sans-serif;
-    --font-sans: system-ui, "Inter", -apple-system, "BlinkMacSystemFont", "Segoe UI", sans-serif;
-    --font-mono: "JetBrains Mono", "Menlo", monospace;
+    --font-sans: "Bricolage Grotesque", system-ui, sans-serif;
+    --font-mono: "Bricolage Grotesque", system-ui, sans-serif;
 
     /* Z-Index Scale */
     --z-dropdown: 100;
@@ -114,14 +117,15 @@
   }
 
   body {
-    @apply bg-bg text-text antialiased;
+    @apply antialiased;
     color: var(--color-text);
     background-color: var(--color-bg);
   }
 
   /* Links */
   a {
-    @apply text-primary hover:opacity-90 transition-opacity;
+    color: var(--color-primary);
+    @apply hover:opacity-90 transition-opacity;
     text-decoration: none;
   }
 
@@ -145,6 +149,12 @@
   select,
   textarea {
     @apply font-sans;
+  }
+
+  input::placeholder,
+  select::placeholder,
+  textarea::placeholder {
+    font-family: var(--font-sans);
   }
 
   input:focus-visible,
@@ -201,7 +211,8 @@
 
   /* Selection */
   ::selection {
-    @apply bg-primary text-white;
+    background-color: var(--color-primary);
+    color: white;
   }
 
   /* Scrollbar Styling */

@@ -35,9 +35,9 @@ const RevalidateRequestSchema = z.object({
  */
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id } = params;
+  const { id } = await params;
 
   try {
     // Parse and validate request body
@@ -84,7 +84,7 @@ export async function POST(
       { status: 202 }
     );
   } catch (error) {
-    console.error(`[POST /api/institutions/${params.id}/revalidate] Error:`, error);
+    console.error(`[POST /api/institutions/${id}/revalidate] Error:`, error);
 
     if (error instanceof z.ZodError) {
       return NextResponse.json(
