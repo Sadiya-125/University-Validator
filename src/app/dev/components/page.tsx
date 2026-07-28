@@ -1,3 +1,5 @@
+"use client";
+
 /**
  * Design System Component Fixtures
  *
