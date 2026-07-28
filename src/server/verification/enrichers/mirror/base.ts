@@ -9,8 +9,8 @@
 import type { ResolvedIdentity } from "../../../discovery/types";
 import type { Enricher, EvidenceItem } from "../../types";
 import { AuthorityCode, EvidenceQuality } from "../../types";
-import { db } from "../../../db";
-import { registryEntries } from "../../../db/schema";
+import { getDb } from "@/server/db/client";
+import { registryEntries } from "@/server/db/schema";
 import { eq } from "drizzle-orm";
 
 /**
@@ -22,19 +22,17 @@ export abstract class BaseMirrorEnricher implements Enricher {
 
   tier = "mirror" as const;
 
-  async verify(
-    identity: ResolvedIdentity,
-    opts?: { timeout?: number }
-  ): Promise<EvidenceItem[]> {
+  async verify(identity: ResolvedIdentity, _opts?: { timeout?: number }): Promise<EvidenceItem[]> {
     try {
       const evidence: EvidenceItem[] = [];
+      const db = getDb();
 
       // Query registry by institution ID
       if (identity.institutionId) {
         const entries = await db
           .select()
           .from(registryEntries)
-          .where(eq(registryEntries.source, this.authority))
+          .where(eq(registryEntries.code, this.authority as any))
           .limit(1);
 
         if (entries.length > 0) {
@@ -43,15 +41,14 @@ export abstract class BaseMirrorEnricher implements Enricher {
             source: this.authority,
             tier: "mirror",
             timestamp: Date.now(),
-            snapshot_date: entry.createdAt ? entry.createdAt.getTime() : undefined,
-            url: entry.sourceUrl || undefined,
+            snapshot_date: entry!.createdAt ? entry!.createdAt.getTime() : undefined,
             category: "legitimacy",
             quality_score: EvidenceQuality.TIER_MIRROR,
             confidence: 0.9,
-            matched_text: entry.name,
+            matched_text: entry!.canonicalName || undefined,
             metadata: {
-              registryId: entry.id,
-              externalId: entry.externalId,
+              registryId: entry!.id,
+              externalId: entry!.externalId,
             },
           });
         }
@@ -75,6 +72,7 @@ export abstract class BaseMirrorEnricher implements Enricher {
 
   async health(): Promise<boolean> {
     try {
+      const db = getDb();
       await db.select().from(registryEntries).limit(1);
       return true;
     } catch {

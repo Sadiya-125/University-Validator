@@ -10,7 +10,7 @@
 import type { ResolvedIdentity } from "../../../discovery/types";
 import type { Enricher, EvidenceItem } from "../../types";
 import { AuthorityCode, EvidenceQuality } from "../../types";
-import { db } from "../../../db";
+import { getDb } from "@/server/db/client";
 
 const CACHE_TTL = 30 * 24 * 60 * 60 * 1000; // 30 days
 const SNAPSHOT_STALE_MS = 60 * 24 * 60 * 60 * 1000; // 60 days

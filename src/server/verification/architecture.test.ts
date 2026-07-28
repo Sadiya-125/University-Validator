@@ -50,7 +50,7 @@ describe("Verification module architecture", () => {
       const importPath = match[1];
 
       for (const forbidden of forbiddenImports) {
-        if (importPath.includes(forbidden)) {
+        if (importPath!.includes(forbidden)) {
           violations.push(`${filePath}: imports from ${importPath}`);
         }
       }
@@ -107,7 +107,7 @@ describe("Verification module architecture", () => {
         const importPath = match[1];
 
         // Skip node_modules and @types
-        if (importPath.startsWith("@") || /^[a-z]/i.test(importPath.charAt(0))) {
+        if (importPath!.startsWith("@") || /^[a-z]/i.test(importPath!.charAt(0))) {
           // Built-in or npm module - ok
           continue;
         }
@@ -116,19 +116,19 @@ describe("Verification module architecture", () => {
         let isAllowed = false;
         for (const allowed of allowedPrefixes) {
           if (
-            importPath.startsWith(allowed) ||
-            importPath.includes("/verification/") ||
-            importPath.includes("src/server/db") ||
-            importPath.includes("src/server/fetch")
+            importPath!.startsWith(allowed) ||
+            importPath!.includes("/verification/") ||
+            importPath!.includes("src/server/db") ||
+            importPath!.includes("src/server/fetch")
           ) {
             isAllowed = true;
             break;
           }
         }
 
-        if (!isAllowed && importPath.includes("src/server")) {
+        if (!isAllowed && importPath!.includes("src/server")) {
           // Check if it's an explicitly forbidden import
-          if (!forbiddenImports.some((f) => importPath.includes(f))) {
+          if (!forbiddenImports.some((f) => importPath!.includes(f))) {
             // Might be acceptable (like db), just track for inspection
           }
         }

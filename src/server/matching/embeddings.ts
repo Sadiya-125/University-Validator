@@ -86,7 +86,7 @@ export class FakeEmbeddingProvider implements EmbeddingProvider {
     const vector: number[] = [];
     for (let i = 0; i < this.dimensions; i++) {
       const byteIndex = i % hash.length;
-      const normalized = (hash[byteIndex] - 128) / 128; // Normalize to [-1, 1]
+      const normalized = (hash[byteIndex]! - 128) / 128; // Normalize to [-1, 1]
       vector.push(Math.cos(normalized * Math.PI) * 0.5 + 0.5); // Map to [0, 1]
     }
     return vector;
@@ -135,11 +135,11 @@ export class TEIEmbeddingProvider implements EmbeddingProvider {
 
       for (let j = 0; j < batch.length; j++) {
         embeddings.push({
-          text: batchTexts[j],
-          vector: vectors[j],
+          text: batchTexts[j]!,
+          vector: vectors[j]!,
           model: this.model,
           dimensions: this.dimensions,
-          cached: this.cache.has(batch[j]),
+          cached: this.cache.has(batch[j]!),
         });
       }
     }
@@ -153,9 +153,12 @@ export class TEIEmbeddingProvider implements EmbeddingProvider {
     }
 
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3000);
       const response = await fetch(`${this.baseUrl}/health`, {
-        timeout: 3000,
+        signal: controller.signal,
       });
+      clearTimeout(timeoutId);
       return response.ok;
     } catch {
       this.recordFailure();
@@ -178,7 +181,7 @@ export class TEIEmbeddingProvider implements EmbeddingProvider {
     const cachedVectors: (number[] | undefined)[] = [];
 
     for (let i = 0; i < texts.length; i++) {
-      const cached = this.cache.get(texts[i]);
+      const cached = this.cache.get(texts[i]!);
       if (cached) {
         cachedVectors.push(cached);
       } else {
@@ -193,7 +196,7 @@ export class TEIEmbeddingProvider implements EmbeddingProvider {
     }
 
     // Fetch uncached texts from TEI
-    const uncachedTexts = uncachedIndices.map((i) => texts[i]);
+    const uncachedTexts = uncachedIndices.map((i) => texts[i]!);
     const fetchedVectors = await this.fetchWithRetry(uncachedTexts);
 
     // Merge cached and fetched
@@ -202,8 +205,8 @@ export class TEIEmbeddingProvider implements EmbeddingProvider {
       if (cachedVectors[i]) {
         vectors.push(cachedVectors[i]!);
       } else {
-        const vector = fetchedVectors[fetchedIndex++];
-        this.cache.set(texts[i], vector);
+        const vector = fetchedVectors[fetchedIndex++]!;
+        this.cache.set(texts[i]!, vector);
         vectors.push(vector);
       }
     }
@@ -223,12 +226,15 @@ export class TEIEmbeddingProvider implements EmbeddingProvider {
         throw new Error("Circuit breaker open");
       }
 
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
       const response = await fetch(`${this.baseUrl}/embed`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ texts }),
-        timeout: 10000,
+        signal: controller.signal,
       });
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
@@ -292,11 +298,11 @@ export class GeminiEmbeddingProvider implements EmbeddingProvider {
 
       for (let j = 0; j < batch.length; j++) {
         embeddings.push({
-          text: batch[j],
-          vector: vectors[j],
+          text: batch[j]!,
+          vector: vectors[j]!,
           model: this.model,
           dimensions: this.dimensions,
-          cached: this.cache.has(batch[j]),
+          cached: this.cache.has(batch[j]!),
         });
       }
     }
@@ -333,7 +339,7 @@ export class GeminiEmbeddingProvider implements EmbeddingProvider {
 
     for (let i = 0; i < texts.length; i++) {
       if (!result[i]) {
-        uncached.push(texts[i]);
+        uncached.push(texts[i]!);
       }
     }
 
@@ -368,8 +374,8 @@ export class GeminiEmbeddingProvider implements EmbeddingProvider {
     let embeddingIndex = 0;
     for (let i = 0; i < result.length; i++) {
       if (!result[i]) {
-        const embedding = data.embeddings[embeddingIndex++].values;
-        this.cache.set(texts[i], embedding);
+        const embedding = data.embeddings[embeddingIndex++]!.values;
+        this.cache.set(texts[i]!, embedding);
         result[i] = embedding;
       }
     }

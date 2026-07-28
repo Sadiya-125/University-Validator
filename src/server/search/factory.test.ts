@@ -56,10 +56,7 @@ describe("SearchFactory", () => {
 
   describe("Provider chain", () => {
     it("should use providers in chain order", async () => {
-      const factory = createSearchFactory(
-        { provider1, provider2 },
-        ["provider1", "provider2"]
-      );
+      const factory = createSearchFactory({ provider1, provider2 }, ["provider1", "provider2"]);
 
       const result = await factory.search("test");
 
@@ -69,10 +66,7 @@ describe("SearchFactory", () => {
     it("should fallover to next provider on failure", async () => {
       provider1.failOnSearch = true;
 
-      const factory = createSearchFactory(
-        { provider1, provider2 },
-        ["provider1", "provider2"]
-      );
+      const factory = createSearchFactory({ provider1, provider2 }, ["provider1", "provider2"]);
 
       const result = await factory.search("test");
 
@@ -84,10 +78,7 @@ describe("SearchFactory", () => {
     it("should skip unhealthy providers", async () => {
       provider1.failHealth = true;
 
-      const factory = createSearchFactory(
-        { provider1, provider2 },
-        ["provider1", "provider2"]
-      );
+      const factory = createSearchFactory({ provider1, provider2 }, ["provider1", "provider2"]);
 
       const result = await factory.search("test");
 
@@ -98,10 +89,7 @@ describe("SearchFactory", () => {
 
   describe("Caching", () => {
     it("should cache positive results (≥1 result)", async () => {
-      const factory = createSearchFactory(
-        { provider1, provider2 },
-        ["provider1"]
-      );
+      const factory = createSearchFactory({ provider1, provider2 }, ["provider1"]);
 
       const result1 = await factory.search("test");
       expect(result1.cached).toBe(false);
@@ -133,10 +121,7 @@ describe("SearchFactory", () => {
     });
 
     it("should use different TTLs for positive vs negative", async () => {
-      const factory = createSearchFactory(
-        { provider1 },
-        ["provider1"]
-      );
+      const factory = createSearchFactory({ provider1 }, ["provider1"]);
 
       // Positive result
       const positive = await factory.search("iit bombay");
@@ -145,10 +130,7 @@ describe("SearchFactory", () => {
     });
 
     it("should clear cache", async () => {
-      const factory = createSearchFactory(
-        { provider1 },
-        ["provider1"]
-      );
+      const factory = createSearchFactory({ provider1 }, ["provider1"]);
 
       await factory.search("test");
       let stats = factory.getCacheStats();
@@ -162,20 +144,11 @@ describe("SearchFactory", () => {
 
   describe("Concurrent searches", () => {
     it("should limit concurrency to 3", async () => {
-      const factory = createSearchFactory(
-        { provider1 },
-        ["provider1"]
-      );
+      const factory = createSearchFactory({ provider1 }, ["provider1"]);
 
       const spy = vi.spyOn(provider1, "search");
 
-      const queries = [
-        "query1",
-        "query2",
-        "query3",
-        "query4",
-        "query5",
-      ];
+      const queries = ["query1", "query2", "query3", "query4", "query5"];
 
       await factory.searchMany(queries);
 
@@ -183,10 +156,7 @@ describe("SearchFactory", () => {
     });
 
     it("should maintain order in searchMany results", async () => {
-      const factory = createSearchFactory(
-        { provider1 },
-        ["provider1"]
-      );
+      const factory = createSearchFactory({ provider1 }, ["provider1"]);
 
       const queries = ["query1", "query2", "query3"];
       const results = await factory.searchMany(queries);
@@ -194,36 +164,30 @@ describe("SearchFactory", () => {
       expect(results).toHaveLength(3);
       // Results should be in same order as queries
       for (let i = 0; i < results.length; i++) {
-        expect(results[i].query).toBe(queries[i]);
+        expect(results[i]?.query).toBe(queries[i]);
       }
     });
   });
 
   describe("Health monitoring", () => {
     it("should report provider health", async () => {
-      const factory = createSearchFactory(
-        { provider1, provider2 },
-        ["provider1", "provider2"]
-      );
+      const factory = createSearchFactory({ provider1, provider2 }, ["provider1", "provider2"]);
 
       const health = await factory.getProvidersHealth();
 
-      expect(health.provider1.healthy).toBe(true);
-      expect(health.provider2.healthy).toBe(true);
+      expect(health.provider1?.healthy).toBe(true);
+      expect(health.provider2?.healthy).toBe(true);
     });
 
     it("should mark unhealthy providers", async () => {
       provider1.failHealth = true;
 
-      const factory = createSearchFactory(
-        { provider1, provider2 },
-        ["provider1", "provider2"]
-      );
+      const factory = createSearchFactory({ provider1, provider2 }, ["provider1", "provider2"]);
 
       const health = await factory.getProvidersHealth();
 
-      expect(health.provider1.healthy).toBe(false);
-      expect(health.provider2.healthy).toBe(true);
+      expect(health.provider1?.healthy).toBe(false);
+      expect(health.provider2?.healthy).toBe(true);
     });
   });
 
@@ -231,10 +195,7 @@ describe("SearchFactory", () => {
     it("should track failovers", async () => {
       provider1.failOnSearch = true;
 
-      const factory = createSearchFactory(
-        { provider1, provider2 },
-        ["provider1", "provider2"]
-      );
+      const factory = createSearchFactory({ provider1, provider2 }, ["provider1", "provider2"]);
 
       const result = await factory.search("test");
 
@@ -246,10 +207,7 @@ describe("SearchFactory", () => {
       provider1.failOnSearch = true;
       provider2.failOnSearch = true;
 
-      const factory = createSearchFactory(
-        { provider1, provider2 },
-        ["provider1", "provider2"]
-      );
+      const factory = createSearchFactory({ provider1, provider2 }, ["provider1", "provider2"]);
 
       const result = await factory.search("test");
 
@@ -260,10 +218,7 @@ describe("SearchFactory", () => {
 
   describe("Cache key generation", () => {
     it("should generate different keys for different languages", async () => {
-      const factory = createSearchFactory(
-        { provider1 },
-        ["provider1"]
-      );
+      const factory = createSearchFactory({ provider1 }, ["provider1"]);
 
       const result1 = await factory.search("test", { language: "en" });
       const result2 = await factory.search("test", { language: "hi" });
@@ -273,10 +228,7 @@ describe("SearchFactory", () => {
     });
 
     it("should generate same key for same query and options", async () => {
-      const factory = createSearchFactory(
-        { provider1 },
-        ["provider1"]
-      );
+      const factory = createSearchFactory({ provider1 }, ["provider1"]);
 
       const result1 = await factory.search("test", { language: "en" });
       const result2 = await factory.search("test", { language: "en" });

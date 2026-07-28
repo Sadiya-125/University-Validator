@@ -14,7 +14,7 @@
  */
 
 import { sql } from "drizzle-orm";
-import { db, dbPooled } from "@/server/db";
+import { getDb } from "@/server/db/client";
 import { institutionIdentities } from "@/server/db/schema";
 
 /**
@@ -66,7 +66,7 @@ export async function linkIdentity(
   }
 ): Promise<IdentityLink> {
   // Upsert: try update first, then insert if not found
-  const result = await dbPooled.execute(sql`
+  const resultData = await getDb()!.execute(sql`
     INSERT INTO institution_identities
       (institution_id, source, external_id, name_as_source, normalized_name, match_score, match_method)
     VALUES
@@ -89,15 +89,15 @@ export async function linkIdentity(
       match_method as matchMethod,
       created_at as createdAt,
       updated_at as updatedAt
-  `);
+  `) as any[];
 
-  if (!result || result.length === 0) {
+  if (!resultData || resultData.length === 0) {
     throw new Error(
       `Failed to link identity for institution ${institutionId}`
     );
   }
 
-  return result[0] as IdentityLink;
+  return resultData[0] as IdentityLink;
 }
 
 /**
@@ -124,7 +124,7 @@ export async function mergeInstitutions(
   toId: number
 ): Promise<boolean> {
   try {
-    await dbPooled.transaction(async (tx) => {
+    await getDb()!.transaction(async (tx) => {
       // 1. Repoint identities
       await tx.execute(sql`
         UPDATE institution_identities
@@ -196,7 +196,7 @@ export async function mergeInstitutions(
 export async function refreshAliasView(
   tx?: any
 ): Promise<void> {
-  const executor = tx || db;
+  const executor = tx || getDb()!;
 
   try {
     await executor.execute(
@@ -215,7 +215,7 @@ export async function refreshAliasView(
 export async function getInstitutionIdentities(
   institutionId: number
 ): Promise<IdentityLink[]> {
-  const result = await db.execute(sql<IdentityLink>`
+  const result = await getDb()!.execute(sql`
     SELECT
       id,
       institution_id as institutionId,
@@ -230,9 +230,9 @@ export async function getInstitutionIdentities(
     FROM institution_identities
     WHERE institution_id = ${institutionId}
     ORDER BY source, created_at DESC
-  `);
+  `) as any[];
 
-  return result;
+  return result as IdentityLink[];
 }
 
 /**
@@ -243,15 +243,15 @@ export async function findInstitutionByIdentity(
   source: string,
   externalId: string
 ): Promise<{ institutionId: number } | null> {
-  const result = await db.execute(sql<{ institutionId: number }>`
+  const result = await getDb()!.execute(sql`
     SELECT institution_id as institutionId
     FROM institution_identities
     WHERE source = ${source}
       AND external_id = ${externalId}
     LIMIT 1
-  `);
+  `) as any[];
 
-  return result[0] || null;
+  return (result[0] as { institutionId: number } | undefined) || null;
 }
 
 /**
@@ -261,16 +261,16 @@ export async function findInstitutionByIdentity(
 export async function getInstitutionAliases(
   institutionId: number
 ): Promise<string[]> {
-  const result = await db.execute(
-    sql<{ name: string }>`
+  const result = await getDb()!.execute(
+    sql`
       SELECT DISTINCT name_as_source as name
       FROM institution_identities
       WHERE institution_id = ${institutionId}
       ORDER BY name_as_source
     `
-  );
+  ) as any[];
 
-  return result.map((row) => row.name);
+  return (result as Array<{ name: string }>).map((row) => row.name);
 }
 
 /**
@@ -279,7 +279,7 @@ export async function getInstitutionAliases(
  */
 export async function unlinkIdentity(identityId: number): Promise<boolean> {
   try {
-    await dbPooled.execute(sql`
+    await getDb()!.execute(sql`
       DELETE FROM institution_identities
       WHERE id = ${identityId}
     `);
@@ -297,16 +297,16 @@ export async function hasSourceIdentity(
   institutionId: number,
   source: string
 ): Promise<boolean> {
-  const result = await db.execute(
-    sql<{ count: number }>`
+  const result = await getDb()!.execute(
+    sql`
       SELECT COUNT(*) as count
       FROM institution_identities
       WHERE institution_id = ${institutionId}
         AND source = ${source}
     `
-  );
+  ) as any[];
 
-  return (result[0]?.count ?? 0) > 0;
+  return ((result[0] as { count: number } | undefined)?.count ?? 0) > 0;
 }
 
 /**
@@ -319,18 +319,18 @@ export async function getCanonicalNameFromIdentities(
   const sourceOrder = ["INI", "AICTE", "UGC", "AISHE", "WIKIDATA", "NAD"];
 
   for (const source of sourceOrder) {
-    const result = await db.execute(
-      sql<{ name: string }>`
+    const result = await getDb()!.execute(
+      sql`
         SELECT name_as_source as name
         FROM institution_identities
         WHERE institution_id = ${institutionId}
           AND source = ${source}
         LIMIT 1
       `
-    );
+    ) as any[];
 
     if (result.length > 0) {
-      return result[0].name;
+      return (result[0] as { name: string }).name;
     }
   }
 

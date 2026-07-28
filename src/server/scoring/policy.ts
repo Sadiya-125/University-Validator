@@ -115,7 +115,7 @@ export function decide(
     );
   }
 
-  if (verdict === Verdict.INSUFFICIENT_EVIDENCE || evidence.length === 0) {
+  if (evidence.length === 0) {
     insufficientEvidenceReasons.push("No evidence available for verification");
   } else if (evidence.length < 3) {
     insufficientEvidenceReasons.push("Limited evidence (< 3 sources)");

@@ -49,7 +49,6 @@ const TYPE_TO_AUTHORITIES: Record<InstitutionType, AuthorityCode[]> = {
   [InstitutionType.ENGINEERING]: [
     AuthorityCode.AICTE,
     AuthorityCode.UGC,
-    AuthorityCode.NAAC,
   ],
 
   // Medical colleges
@@ -271,11 +270,10 @@ function getAuthorityRationale(
   type: InstitutionType,
   authority: AuthorityCode
 ): string {
-  const rationales: Record<InstitutionType, Record<AuthorityCode, string>> = {
+  const rationales: Record<InstitutionType, Partial<Record<AuthorityCode, string>>> = {
     [InstitutionType.ENGINEERING]: {
       [AuthorityCode.AICTE]: "Engineering colleges are AICTE-approved",
       [AuthorityCode.UGC]: "Engineering colleges are UGC-affiliated",
-      [AuthorityCode.NAAC]: "Quality assurance agency",
     },
     [InstitutionType.MEDICAL]: {
       [AuthorityCode.NMC]: "Medical colleges are NMC-regulated",

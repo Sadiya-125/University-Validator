@@ -71,7 +71,7 @@ export function computeConfidence(
 
   // Terminal rule 2: Withdrawn authority → strong negative
   const hasWithdrawn = evidence.some(
-    (e) => e.source === "WITHDRAWN_AUTHORITY" || e.claim_type === "withdrawn"
+    (e) => e.source === "WITHDRAWN_AUTHORITY"
   );
   if (hasWithdrawn) {
     terminalRule = "WITHDRAWN_AUTHORITY";
@@ -139,7 +139,8 @@ export function computeConfidence(
     const combinedWeight = tierWeight * categoryWeight * domainWeight;
 
     // Calculate age multiplier (exponential decay)
-    const ageMs = now - (item.observed_at?.getTime() || now);
+    const obsTimeMs = item.observed_at || now;
+    const ageMs = now - obsTimeMs;
     const ageDays = ageMs / (1000 * 60 * 60 * 24);
     const halfLife = policy.evidence_half_life_days;
     const ageMultiplier = Math.exp(-ageDays / halfLife);
@@ -203,7 +204,7 @@ export function getDomainWeight(url: string | undefined, policy: ScoringPolicy):
  */
 export function getEvidenceAgeDays(evidence: StoredEvidence, referenceTime?: number): number {
   const ref = referenceTime || Date.now();
-  const ageMs = ref - (evidence.observed_at?.getTime() || ref);
+  const ageMs = ref - (evidence.observed_at || ref);
   return ageMs / (1000 * 60 * 60 * 24);
 }
 

@@ -14,7 +14,7 @@
  */
 
 import { sql } from "drizzle-orm";
-import { db } from "@/server/db";
+import { getDb } from "@/server/db/client";
 
 /**
  * Candidate result from trigram similarity search
@@ -125,9 +125,9 @@ export async function findTrigramCandidates({
     LIMIT ${limit}
   `;
 
-  const results = await db.execute(query);
+  const resultData = await getDb()!.execute(query) as any[];
 
-  return results.map((row) => ({
+  return resultData.map((row) => ({
     id: row.id,
     type: row.type as "institution" | "identity" | "registry",
     name: row.name,
@@ -152,11 +152,11 @@ export async function calculateSimilarity(
   text1: string,
   text2: string
 ): Promise<number> {
-  const result = await db.execute(
-    sql<{ similarity: number }>`SELECT similarity(${text1}, ${text2}) as similarity`
-  );
+  const result = await getDb()!.execute(
+    sql`SELECT similarity(${text1}, ${text2}) as similarity`
+  ) as any[];
 
-  return result[0]?.similarity ?? 0;
+  return (result[0] as { similarity: number } | undefined)?.similarity ?? 0;
 }
 
 /**
@@ -177,7 +177,9 @@ export async function findTrigramCandidatesBatch({
 
   // Run each query sequentially to avoid connection pool exhaustion
   for (let i = 0; i < queries.length; i++) {
-    const { name, sources } = queries[i];
+    const query = queries[i];
+    if (!query) break;
+    const { name, sources } = query;
     const candidates = await findTrigramCandidates({
       names: [name],
       sources,

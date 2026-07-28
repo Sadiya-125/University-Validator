@@ -289,7 +289,7 @@ export function expandVariants(normalized: string): string[] {
 
     // Try partial expansions (expand one at a time)
     for (let i = 0; i < words.length; i++) {
-      const upper = words[i].toUpperCase();
+      const upper = words[i]!.toUpperCase();
       if (ABBREVIATIONS[upper as keyof typeof ABBREVIATIONS]) {
         const partial = [...words];
         partial[i] = ABBREVIATIONS[upper as keyof typeof ABBREVIATIONS];

@@ -114,7 +114,12 @@ export async function resolveInstitution(
   const embedProvider =
     opts.embeddingProvider || (await getEmbeddingProvider("fake"));
 
-  const [inputEmbedding] = await embedProvider.embed([input]);
+  const inputEmbeddings = await embedProvider.embed([input]);
+  if (!inputEmbeddings || inputEmbeddings.length === 0) {
+    throw new Error("Failed to generate embedding for input");
+  }
+  const inputEmbedding = inputEmbeddings[0]!;
+
   const candidateNames = Array.from(allTrigramCandidates.values()).map(
     (c) => c.name
   );
@@ -124,9 +129,10 @@ export async function resolveInstitution(
   const vectorScores = new Map<number, number>();
   for (let i = 0; i < allTrigramCandidates.size; i++) {
     const candidate = Array.from(allTrigramCandidates.values())[i];
+    if (!candidate) break;
     const cosineSimilarity = calculateCosineSimilarity(
       inputEmbedding.vector,
-      candidateEmbeddings[i].vector
+      candidateEmbeddings[i]!.vector
     );
     vectorScores.set(candidate.id, cosineSimilarity);
   }
@@ -185,9 +191,9 @@ function calculateCosineSimilarity(vec1: number[], vec2: number[]): number {
   let mag2 = 0;
 
   for (let i = 0; i < vec1.length; i++) {
-    dotProduct += vec1[i] * vec2[i];
-    mag1 += vec1[i] * vec1[i];
-    mag2 += vec2[i] * vec2[i];
+    dotProduct += vec1[i]! * vec2[i]!;
+    mag1 += vec1[i]! * vec1[i]!;
+    mag2 += vec2[i]! * vec2[i]!;
   }
 
   mag1 = Math.sqrt(mag1);
@@ -223,7 +229,7 @@ export async function resolveInstitutionBatch(
   // Run each resolution sequentially to avoid resource exhaustion
   // (In production, consider parallel resolution with rate limiting)
   for (let i = 0; i < inputs.length; i++) {
-    const candidates = await resolveInstitution(inputs[i], opts);
+    const candidates = await resolveInstitution(inputs[i]!, opts);
     results.set(i, candidates);
   }
 

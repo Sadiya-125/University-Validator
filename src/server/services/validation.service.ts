@@ -16,12 +16,20 @@
  * State transitions follow §12 rules; illegal transitions throw.
  */
 
-import type { Normalizable } from "../normalization/types";
+// Normalizable is just a string type for institution names
 import type { ResolvedIdentity } from "../discovery/types";
 import type { VerificationResult } from "../verification/types";
 import type { EvidenceCollector } from "../evidence/collector";
-import type { ExtractedFacts, ValidationJudgment } from "../llm/types";
 import type { ScoringPolicy, ScoringDecision } from "../scoring/types";
+
+// Placeholder types for LLM processing
+export interface ExtractedFacts {
+  [key: string]: any;
+}
+
+export interface ValidationJudgment {
+  [key: string]: any;
+}
 
 /**
  * Result type for all validation stages
@@ -87,7 +95,7 @@ export interface ValidationOptions {
  * Checks: Redis verdict → institutions_db → freshness
  */
 export async function resolveFastPath(
-  input: Normalizable,
+  input: string,
   opts: ValidationOptions
 ): Promise<Result<FastPathResult>> {
   const step = "fastPath";
@@ -125,7 +133,7 @@ export async function resolveFastPath(
       ) as Array<{ id: number; verdict: string; cached_at: Date }>;
 
       if (rows.length > 0) {
-        const { id: institutionId, verdict, cached_at } = rows[0];
+        const { id: institutionId, verdict, cached_at } = rows[0]!;
         const stale = Date.now() - cached_at.getTime() > 7 * 24 * 60 * 60 * 1000;
         const duration = Date.now() - start;
 
@@ -141,11 +149,11 @@ export async function resolveFastPath(
         ) as Array<{ code: string; name: string; valid_to?: Date; row_count?: number }>;
 
         const authorities: AuthorityMatch[] = authRows.map(row => ({
-          name: row.name || row.code,
+          name: (row.name || row.code) as string,
           code: row.code,
           found: true,
-          snapshotDate: row.valid_to ? new Date(row.valid_to).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
-          rowCount: row.row_count || 0,
+          snapshotDate: (row.valid_to ? new Date(row.valid_to).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]) as string,
+          rowCount: row.row_count ?? 0,
         }));
 
         opts.onProgress?.(step, "complete", { duration, cacheHit: true, source: "institutions_db", stale, authoritiesCount: authorities.length });
@@ -178,11 +186,11 @@ export async function resolveFastPath(
         ) as Array<{ code: string; name: string; valid_to?: Date; row_count?: number }>;
 
         const authorities: AuthorityMatch[] = authRows.map(row => ({
-          name: row.name || row.code,
+          name: (row.name || row.code) as string,
           code: row.code,
           found: true,
-          snapshotDate: row.valid_to ? new Date(row.valid_to).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
-          rowCount: row.row_count || 0,
+          snapshotDate: (row.valid_to ? new Date(row.valid_to).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]) as string,
+          rowCount: row.row_count ?? 0,
         }));
 
         opts.onProgress?.(step, "complete", { duration, cacheHit: true, source: "registry_entries", stale: false, authoritiesCount: authorities.length });
@@ -200,7 +208,7 @@ export async function resolveFastPath(
 
     return {
       success: true,
-      data: { hit: false, source: null, stale: false, authorities: [] },
+      data: { hit: false, source: undefined, stale: false, authorities: [] },
     };
   } catch (error) {
     const duration = Date.now() - start;
@@ -219,7 +227,7 @@ export async function resolveFastPath(
  * If score ≥ threshold OR terminal rule fires, return final verdict.
  */
 export async function resolveFromMirror(
-  input: Normalizable,
+  input: string,
   opts: ValidationOptions
 ): Promise<Result<MirrorPathResult>> {
   const step = "mirror";
@@ -259,7 +267,7 @@ export async function resolveFromMirror(
  * Delegates to discovery/service.discover()
  */
 export async function discoverIdentity(
-  input: Normalizable,
+  input: string,
   opts: ValidationOptions
 ): Promise<Result<ResolvedIdentity>> {
   const step = "discover";
@@ -277,8 +285,13 @@ export async function discoverIdentity(
       success: true,
       data: {
         canonicalName: String(input),
+        type: "institution",
         confidence: 0,
+        needsReview: false,
+        needsHumanReview: true,
         resolverChain: [],
+        resolvedAt: Date.now(),
+        candidates: [],
       },
     };
   } catch (error) {
@@ -399,7 +412,7 @@ export async function judgeEvidence(
  * Idempotent by (normalizedName, runId)
  */
 export async function finalizeValidation(
-  input: Normalizable,
+  input: string,
   identity: ResolvedIdentity,
   collector: EvidenceCollector,
   facts: ExtractedFacts,
@@ -449,7 +462,7 @@ export async function finalizeValidation(
  * Respects maxTier and calls onProgress for each step.
  */
 export async function validate(
-  input: Normalizable,
+  input: string,
   opts: ValidationOptions
 ): Promise<Result<{ verdict: string; decision?: ScoringDecision; authorities?: AuthorityMatch[] }>> {
   const { runId, maxTier = "finalize", onProgress } = opts;

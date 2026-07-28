@@ -57,7 +57,7 @@ async function fetchProfileFromDatabase(
       .limit(1);
 
     if (inst.length > 0) {
-      const institution = inst[0];
+      const institution = inst[0]!;
 
       // Get all identities for this institution
       const identities = await db
@@ -189,7 +189,7 @@ async function enrichWithSearchEngine(
     // Check cache first
     const cached = await redis.get(cacheKey);
     if (cached) {
-      const cachedData = JSON.parse(cached);
+      const cachedData = JSON.parse(cached as string);
       return { ...existingProfile, ...cachedData };
     }
 
@@ -216,13 +216,13 @@ async function enrichWithSearchEngine(
 
         // Extract contact info from search results
         for (const result of response.results) {
-          const snippet = (result.snippet || "").toLowerCase();
+          const description = (result.description || "").toLowerCase();
           const title = (result.title || "").toLowerCase();
-          const fullText = `${title} ${snippet}`;
+          const fullText = `${title} ${description}`;
 
           // Look for email
           if (!enrichedData.email) {
-            const emailMatch = result.snippet?.match(
+            const emailMatch = result.description?.match(
               /[\w\.-]+@[\w\.-]+\.\w+/g
             );
             if (emailMatch?.[0]) {
@@ -232,7 +232,7 @@ async function enrichWithSearchEngine(
 
           // Look for phone (Indian format)
           if (!enrichedData.phone) {
-            const phoneMatch = result.snippet?.match(/(?:\+91|0)?[\s.-]?[6-9]\d{2}[\s.-]?\d{3,4}[\s.-]?\d{3,4}/g);
+            const phoneMatch = result.description?.match(/(?:\+91|0)?[\s.-]?[6-9]\d{2}[\s.-]?\d{3,4}[\s.-]?\d{3,4}/g);
             if (phoneMatch?.[0]) {
               enrichedData.phone = phoneMatch[0];
             }
@@ -243,8 +243,8 @@ async function enrichWithSearchEngine(
             enrichedData.website = result.url;
           }
 
-          // Look for address and location info from snippets
-          if (!enrichedData.address && result.snippet) {
+          // Look for address and location info from descriptions
+          if (!enrichedData.address && result.description) {
             // Try to extract address patterns
             const addressPatterns = [
               /(?:address|located at|headquarters)[:\s]+([^,\n]+(?:[,][^,\n]+)?)/gi,
@@ -252,7 +252,7 @@ async function enrichWithSearchEngine(
             ];
 
             for (const pattern of addressPatterns) {
-              const match = result.snippet.match(pattern);
+              const match = result.description.match(pattern);
               if (match) {
                 enrichedData.address = match[1] || match[0];
                 enrichedData.address = enrichedData.address.substring(0, 500);
@@ -305,7 +305,13 @@ async function enrichWithSearchEngine(
 
     // Cache the enrichment for 7 days
     if (Object.keys(enrichedData).length > 0) {
-      await redis.setex(cacheKey, 7 * 24 * 60 * 60, JSON.stringify(enrichedData));
+      try {
+        await redis.set(cacheKey, JSON.stringify(enrichedData));
+        await redis.expire(cacheKey, 7 * 24 * 60 * 60);
+      } catch (e) {
+        // Cache failure is non-fatal
+        console.warn("[enrichWithSearchEngine] Cache set failed:", e);
+      }
     }
 
     return { ...existingProfile, ...enrichedData };
@@ -348,7 +354,7 @@ export async function saveEnrichedInstitution(
           lastValidatedAt: new Date(),
           validUntil: new Date(Date.now() + 180 * 24 * 60 * 60 * 1000), // 6 months validity
         })
-        .returning({ id: institutions.id });
+        .returning();
 
       if (result.length > 0) {
         const institutionId = result[0]!.id;
