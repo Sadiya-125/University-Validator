@@ -22,7 +22,7 @@ const validateSchema = z.object({
 type ValidateFormData = z.infer<typeof validateSchema>;
 
 interface ValidateFormProps {
-  onSubmit: (institutionName: string) => void;
+  onSubmit: (institutionName: string, forceRevalidate?: boolean) => void;
   isLoading: boolean;
 }
 
@@ -72,13 +72,13 @@ export function ValidateForm({ onSubmit, isLoading }: ValidateFormProps) {
   }, [institutionName]);
 
   const handleFormSubmit = (data: ValidateFormData) => {
-    onSubmit(data.institutionName);
+    onSubmit(data.institutionName, data.force);
   };
 
   const handleSuggestionClick = (suggestion: string) => {
     setValue("institutionName", suggestion);
     setShowSuggestions(false);
-    onSubmit(suggestion);
+    onSubmit(suggestion, false);
   };
 
   return (

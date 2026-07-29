@@ -80,7 +80,7 @@ export default function ValidatePage() {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleValidate = async (institutionName: string) => {
+  const handleValidate = async (institutionName: string, forceRevalidate: boolean = false) => {
     setIsLoading(true);
     setError(null);
     setResult(null);
@@ -89,7 +89,10 @@ export default function ValidatePage() {
       const response = await fetch("/api/validate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ normalizedName: institutionName }),
+        body: JSON.stringify({
+          normalizedName: institutionName,
+          skipCache: forceRevalidate,
+        }),
       });
 
       if (response.status === 200) {
@@ -143,6 +146,16 @@ export default function ValidatePage() {
     }
   };
 
+  const handleEnrichComplete = async () => {
+    // Refresh the validation result with updated enriched data
+    if (result) {
+      // Wait a moment for database to be updated
+      await new Promise(resolve => setTimeout(resolve, 500));
+      // Re-validate with skipCache to get fresh data from database
+      await handleValidate(result.institutionName, true);
+    }
+  };
+
   return (
     <div className="space-y-8">
       {/* Page Header */}
@@ -176,7 +189,12 @@ export default function ValidatePage() {
       )}
 
       {result && result.status === "completed" && (
-        <ValidateResult result={result} />
+        <ValidateResult
+          result={result}
+          onRevalidate={(name) => handleValidate(name, true)}
+          isRevalidating={isLoading}
+          onEnrichComplete={handleEnrichComplete}
+        />
       )}
 
       {!result && !isLoading && !error && (

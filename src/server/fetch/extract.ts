@@ -89,8 +89,11 @@ export function extractPage(html: string, pageUrl: string): ExtractedPage {
     needsJavaScript: false,
   };
 
-  // Extract title
-  result.title = $("title").text().trim() || $('meta[property="og:title"]').attr("content")?.trim();
+  // Extract title (prefer og:title for cleaner social media titles)
+  result.title = $('meta[property="og:title"]').attr("content")?.trim() ||
+                 $('meta[name="title"]').attr("content")?.trim() ||
+                 $("title").text().trim() ||
+                 undefined;
 
   // Extract description
   result.description =
@@ -205,11 +208,18 @@ function extractEmails(html: string): string[] {
 function extractPhones(html: string): string[] {
   const phones = new Set<string>();
 
-  // Indian phone patterns
+  // Indian phone patterns (ordered by priority)
   const patterns = [
-    /\b(\+91|0)?[-.]?([6-9]\d{2})[-.]?(\d{4})[-.]?(\d{4})\b/g, // 10-digit
-    /\b(\+91)[-.]?(\d{10})\b/g, // +91 format
-    /\b0(\d{3,4})[-.]?(\d{6,7})\b/g, // Landline
+    // +91 followed by 10 digits (mobile) - most common format
+    /\+91[-.\s]?([6-9]\d{9})/g,
+    // Standalone 10-digit mobile (starts with 6-9)
+    /\b([6-9]\d{9})\b/g,
+    // +91 with flexible separators (mobile 3-3-4 or 3-4-3 pattern)
+    /\+91[-.\s]?([6-9]\d{2})[-.\s]?(\d{3,4})[-.\s]?(\d{3,4})/g,
+    // Landline: 0 + area code + number (0XX-XXXX-XXXX format)
+    /\b0([ \d]{2,4})[-.\s]?(\d{3,4})[-.\s]?(\d{4,5})\b/g,
+    // Landline: +91 + area code + number
+    /\+91[-.\s]?([1-4]\d{1,3})[-.\s]?(\d{3,4})[-.\s]?(\d{4,5})/g,
   ];
 
   for (const pattern of patterns) {
@@ -227,27 +237,55 @@ function extractPhones(html: string): string[] {
  * Normalize phone to E.164 format
  */
 export function normalizePhone(phone: string): string {
-  // Remove common separators and +
-  let cleaned = phone.replace(/[-.\s()+]/g, "");
+  // Remove common separators
+  let cleaned = phone.replace(/[-.\s()]/g, "");
 
-  // Handle already formatted +919876543210
+  // Remove leading + if present
+  if (cleaned.startsWith("+")) {
+    cleaned = cleaned.substring(1);
+  }
+
+  // Handle already formatted 919876543210 (12 digits)
   if (cleaned.startsWith("91") && cleaned.length === 12) {
     if (/^91[6-9]/.test(cleaned)) {
       return `+${cleaned}`;
     }
+    // Landline format like 912225767086 (must have recognizable area code pattern)
+    if (/^91[1-4][0-9]{8,9}$/.test(cleaned)) {
+      return `+${cleaned}`;
+    }
   }
 
-  // Handle 10-digit Indian numbers
+  // Handle 10-digit Indian mobile numbers (must start with 6-9)
   if (cleaned.length === 10 && /^[6-9]/.test(cleaned)) {
     return `+91${cleaned}`;
   }
 
-  // Handle 11-digit with leading 0
+  // Handle 11-digit with leading 0 (mobile)
   if (cleaned.length === 11 && cleaned.startsWith("0")) {
-    cleaned = cleaned.substring(1);
-    if (/^[6-9]/.test(cleaned)) {
-      return `+91${cleaned}`;
+    const withoutZero = cleaned.substring(1);
+    if (/^[6-9]/.test(withoutZero)) {
+      return `+91${withoutZero}`;
     }
+    // Landline like 02225767086 (0 + area code + number)
+    if (/^[1-4][0-9]{8,9}$/.test(withoutZero)) {
+      return `+91${withoutZero}`;
+    }
+  }
+
+  // Handle 10-digit starting with 0 (landline format: 0XX XXXXXXX)
+  if (cleaned.length === 10 && cleaned.startsWith("0")) {
+    const areaCode = cleaned.substring(0, 3);
+    // Check if it looks like a valid area code (1-4)
+    if (/^0[1-4]/.test(cleaned)) {
+      return `+91${cleaned.substring(1)}`;
+    }
+  }
+
+  // Handle landline with area code (e.g., 2225767086) - must not look like a mobile
+  if (cleaned.length >= 9 && cleaned.length <= 11 && /^[1-4][0-9]*$/.test(cleaned)) {
+    // Only if first digit is 1-4 (area code range, not mobile 6-9)
+    return `+91${cleaned}`;
   }
 
   return "";
@@ -258,14 +296,31 @@ export function normalizePhone(phone: string): string {
  */
 function extractAddresses($: cheerio.CheerioAPI): string[] {
   const addresses: string[] = [];
+  const seen = new Set<string>();
 
-  // Look for address elements
-  $("address, [itemprop='address'], .address, .location").each((_, el) => {
-    const text = $(el).text().trim();
-    if (text && text.length > 5) {
-      addresses.push(text);
-    }
-  });
+  // Look for address elements with multiple selectors
+  const selectors = [
+    "address",
+    "[itemprop='address']",
+    ".address",
+    ".location",
+    ".contact-address",
+    "[data-address]",
+    ".footer-address",
+    "[role='contentinfo'] address",
+  ];
+
+  for (const selector of selectors) {
+    $(selector).each((_, el) => {
+      let text = $(el).text().trim();
+      // Clean up multiple spaces
+      text = text.replace(/\s+/g, " ");
+      if (text && text.length > 5 && !seen.has(text)) {
+        addresses.push(text);
+        seen.add(text);
+      }
+    });
+  }
 
   return addresses;
 }
@@ -376,6 +431,32 @@ function detectState(text: string): string | undefined {
     "ladakh",
   ];
 
+  // Look for states with location context keywords
+  const locationKeywords = ["located", "based", "situated", "campus", "headquarters", "address", "contact", "location"];
+
+  // First, try to find states near location keywords (within 100 chars)
+  for (const keyword of locationKeywords) {
+    const regex = new RegExp(`.{0,100}${keyword}.{0,100}`, "gi");
+    const matches = text.matchAll(regex);
+    for (const match of matches) {
+      const context = match[0].toLowerCase();
+      for (const state of stateList) {
+        if (context.includes(state)) {
+          return state;
+        }
+      }
+    }
+  }
+
+  // Fallback: search in first 500 chars (more relevant content usually near start)
+  const firstPart = lowerText.substring(0, 500);
+  for (const state of stateList) {
+    if (firstPart.includes(state)) {
+      return state;
+    }
+  }
+
+  // Last resort: search anywhere
   for (const state of stateList) {
     if (lowerText.includes(state)) {
       return state;
@@ -442,28 +523,12 @@ function extractApproval(text: string): { text: string; snippet: string } | unde
  * Detect if page needs JavaScript rendering
  */
 function needsJavaScript($: cheerio.CheerioAPI, mainText: string): boolean {
-  // Heuristic 1: Body text < 200 chars
-  if (mainText.trim().length < 200) {
-    return true;
-  }
-
-  // Heuristic 2: Empty root div (common in SPAs)
-  const rootDivs = $("#root, #app");
-  if (rootDivs.length > 0) {
-    for (const div of rootDivs) {
-      const content = $(div).text().trim();
-      if (!content || content.length < 50) {
-        return true;
-      }
-    }
-  }
-
-  // Heuristic 3: Meta refresh (redirect)
+  // Heuristic 1: Meta refresh (redirect) - strong indicator
   if ($('meta[http-equiv="refresh"]').length > 0) {
     return true;
   }
 
-  // Heuristic 4: SPA markers
+  // Heuristic 2: SPA framework markers - strong indicator
   const spaMarkers = [
     'div[ng-app]',      // AngularJS
     '[data-reactroot]', // React
@@ -475,6 +540,27 @@ function needsJavaScript($: cheerio.CheerioAPI, mainText: string): boolean {
 
   for (const marker of spaMarkers) {
     if ($(marker).length > 0) {
+      return true;
+    }
+  }
+
+  // Heuristic 3: Empty root div + very little content (combined indicator)
+  const rootDivs = $("#root, #app");
+  if (rootDivs.length > 0) {
+    for (const div of rootDivs) {
+      const content = $(div).text().trim();
+      // Only flag as SPA if root div is empty/minimal AND page has little content overall
+      if ((!content || content.length < 50) && mainText.trim().length < 100) {
+        return true;
+      }
+    }
+  }
+
+  // Heuristic 4: Very minimal content combined with no h1/h2/main tags (last resort)
+  // Only trigger if text is < 50 chars AND page lacks structure
+  if (mainText.trim().length < 50) {
+    const hasStructure = $("h1, h2, main, article, section").length > 0;
+    if (!hasStructure) {
       return true;
     }
   }

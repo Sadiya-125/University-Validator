@@ -18,7 +18,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { sql, eq, inArray } from "drizzle-orm";
+import { sql, eq, inArray, and } from "drizzle-orm";
 import { requestValidation } from "@/inngest";
 import { validate } from "@/server/services/validation.service";
 import { enrichInstitution, getRegistryAttributes } from "@/server/services/enrichment.service";
@@ -79,44 +79,55 @@ function calculateConfidence(
  */
 async function fetchAuthoritiesForInstitution(db: any, normalizedName: string) {
   try {
-    // First try institutions table
-    const inst = await db
-      .select({ id: institutions.id })
-      .from(institutions)
-      .where(eq(institutions.normalizedName, normalizedName))
-      .limit(1);
+    // First try institutions table with identities
+    try {
+      const inst = await db
+        .select({ id: institutions.id })
+        .from(institutions)
+        .where(eq(institutions.normalizedName, normalizedName))
+        .limit(1);
 
-    if (inst.length > 0) {
-      // Get identities/authorities for this institution
-      const identities = await db
-        .select({
-          source: institutionIdentities.source,
-          authName: authorities.display_name,
-        })
-        .from(institutionIdentities)
-        .leftJoin(authorities, eq(institutionIdentities.source, authorities.authority_code))
-        .where(eq(institutionIdentities.institutionId, inst[0].id));
+      if (inst.length > 0) {
+        // Get identities/authorities for this institution
+        const identities = await db
+          .select({
+            source: institutionIdentities.source,
+            authName: authorities.display_name,
+          })
+          .from(institutionIdentities)
+          .leftJoin(
+            authorities,
+            sql`${institutionIdentities.source}::text = ${authorities.authority_code}::text`
+          )
+          .where(eq(institutionIdentities.institutionId, inst[0].id));
 
-      return identities.map((row: any) => ({
-        name: row.authName || row.source,
-        code: row.source,
-        found: true,
-        snapshotDate: new Date().toISOString().split('T')[0],
-        rowCount: 0,
-      }));
+        if (identities.length > 0) {
+          return identities.map((row: any) => ({
+            name: row.authName || row.source,
+            code: row.source,
+            found: true,
+            snapshotDate: new Date().toISOString().split('T')[0],
+            rowCount: 0,
+          }));
+        }
+      }
+    } catch (e) {
+      console.warn("[fetchAuthoritiesForInstitution] Failed to query institutions table, trying registry fallback", e);
     }
 
-    // Fallback: check registry_entries for raw data
+    // Fallback: check registry_entries for raw data directly
     const regEntries = await db
       .select({
         code: registryEntries.code,
       })
       .from(registryEntries)
       .where(eq(registryEntries.normalizedName, normalizedName))
-      .limit(10);
+      .limit(100); // Increased limit to catch all authorities
 
     if (regEntries.length > 0) {
       const codes = [...new Set(regEntries.map((r: any) => r.code))];
+
+      // Get authority names
       const auths = await db
         .select({
           code: registrySnapshots.code,
@@ -127,11 +138,22 @@ async function fetchAuthoritiesForInstitution(db: any, normalizedName: string) {
         .leftJoin(authorities, eq(registrySnapshots.code, authorities.authority_code))
         .where(inArray(registrySnapshots.code, codes as any));
 
-      return auths.map((row: any) => ({
-        name: row.name || row.code,
-        code: row.code,
+      if (auths.length > 0) {
+        return auths.map((row: any) => ({
+          name: row.name || row.code,
+          code: row.code,
+          found: true,
+          snapshotDate: row.validTo ? new Date(row.validTo).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+          rowCount: 0,
+        }));
+      }
+
+      // If no registrySnapshots found, just return the codes we found
+      return codes.map((code) => ({
+        name: code,
+        code: code,
         found: true,
-        snapshotDate: row.validTo ? new Date(row.validTo).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+        snapshotDate: new Date().toISOString().split('T')[0],
         rowCount: 0,
       }));
     }
@@ -222,7 +244,8 @@ export async function POST(request: NextRequest) {
           redis: {
             get: async (key: string) => (await redis.get(key)) as string | null,
             setex: async (key: string, ttlSec: number, value: string) => {
-              await (redis as any).setex(key, ttlSec, value);
+              await redis.set(key, value);
+              await redis.expire(key, ttlSec);
             },
           },
         });
@@ -246,6 +269,17 @@ export async function POST(request: NextRequest) {
         enrichInstitution(normalized, false),
         getRegistryAttributes(normalized),
       ]);
+
+      // Prefer registry website if available (registry is authoritative)
+      if (registryAttrs.length > 0) {
+        for (const attr of registryAttrs) {
+          if (attr.attributes?.url) {
+            console.log(`[POST /api/validate] Using registry website: ${attr.attributes.url}`);
+            profile.website = attr.attributes.url;
+            break; // Use first URL found
+          }
+        }
+      }
 
       // Save enriched institution to database if not already there
       try {

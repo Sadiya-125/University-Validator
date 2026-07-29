@@ -5,18 +5,32 @@ import { VerdictBadge } from "@/components/verdict-badge";
 import { ConfidenceBar } from "@/components/confidence-bar";
 import { EvidenceTable } from "@/components/evidence-table";
 import { SourceHealthGrid } from "@/components/source-health-grid";
-import { Copy, Download, RotateCcw } from "lucide-react";
+import { Copy, Download, RotateCcw, Loader2 } from "lucide-react";
 import type { ValidationResult } from "../page";
 
 interface ValidateResultProps {
   result: ValidationResult;
+  onRevalidate?: (institutionName: string) => void;
+  isRevalidating?: boolean;
+  onEnrichComplete?: () => void;
 }
 
-export function ValidateResult({ result }: ValidateResultProps) {
+export function ValidateResult({
+  result,
+  onRevalidate,
+  isRevalidating = false,
+  onEnrichComplete,
+}: ValidateResultProps) {
   const [activeTab, setActiveTab] = useState<
     "overview" | "contact" | "evidence" | "authorities" | "registry" | "runs"
   >("overview");
   const [copied, setCopied] = useState(false);
+
+  const handleRevalidate = () => {
+    if (onRevalidate) {
+      onRevalidate(result.institutionName);
+    }
+  };
 
   const handleCopyJSON = () => {
     navigator.clipboard.writeText(JSON.stringify(result, null, 2));
@@ -40,9 +54,7 @@ export function ValidateResult({ result }: ValidateResultProps) {
       <div className="bg-bg-secondary border border-border rounded-lg p-6">
         <div className="flex items-start justify-between mb-6">
           <div>
-            <h2 className="text-3xl font-display font-bold mb-2">
-              {result.institutionName}
-            </h2>
+            <h2 className="text-3xl font-display font-bold mb-2">{result.institutionName}</h2>
             <p className="text-text-secondary text-sm">
               Validated in {result.responseTime}ms · Source: {result.source}
             </p>
@@ -72,10 +84,16 @@ export function ValidateResult({ result }: ValidateResultProps) {
             Export
           </button>
           <button
-            className="flex items-center gap-2 px-4 py-2 rounded-md border border-border text-text-secondary hover:text-text transition-colors text-sm font-medium ml-auto"
+            onClick={handleRevalidate}
+            disabled={isRevalidating}
+            className={`flex items-center gap-2 px-4 py-2 rounded-md border border-border text-sm font-medium ml-auto transition-colors ${
+              isRevalidating
+                ? "bg-primary/10 text-text-secondary cursor-not-allowed opacity-60"
+                : "text-text-secondary hover:text-text"
+            }`}
           >
-            <RotateCcw size={16} />
-            Revalidate
+            <RotateCcw size={16} className={isRevalidating ? "animate-spin" : ""} />
+            {isRevalidating ? "Revalidating..." : "Revalidate"}
           </button>
         </div>
       </div>
@@ -97,7 +115,7 @@ export function ValidateResult({ result }: ValidateResultProps) {
                   }
                 `}
               >
-                {tab.replace(/([A-Z])/g, ' $1').trim()}
+                {tab.replace(/([A-Z])/g, " $1").trim()}
               </button>
             )
           )}
@@ -107,14 +125,12 @@ export function ValidateResult({ result }: ValidateResultProps) {
       {/* Tab Content */}
       <div>
         {activeTab === "overview" && <OverviewTab result={result} />}
-        {activeTab === "contact" && <ContactTab result={result} />}
-        {activeTab === "authorities" && (
-          <AuthoritiesTab result={result} />
+        {activeTab === "contact" && (
+          <ContactTab result={result} onEnrichComplete={onEnrichComplete} />
         )}
+        {activeTab === "authorities" && <AuthoritiesTab result={result} />}
         {activeTab === "registry" && <RegistryTab result={result} />}
-        {activeTab === "evidence" && (
-          <EvidenceTable evidence={[]} />
-        )}
+        {activeTab === "evidence" && <EvidenceTable evidence={[]} />}
         {activeTab === "runs" && (
           <div className="text-text-secondary text-sm">
             <p>Run history coming soon...</p>
@@ -141,9 +157,7 @@ function OverviewTab({ result }: { result: ValidationResult }) {
           </div>
           <div>
             <p className="text-sm text-text-secondary mb-1">Confidence</p>
-            <p className="font-mono text-text">
-              {Math.round(result.confidence * 100)}%
-            </p>
+            <p className="font-mono text-text">{Math.round(result.confidence * 100)}%</p>
           </div>
         </div>
       </div>
@@ -189,26 +203,15 @@ function AuthoritiesTab({ result }: { result: ValidationResult }) {
       <table className="w-full text-sm">
         <thead className="border-b border-border bg-bg">
           <tr>
-            <th className="text-left px-6 py-3 font-medium text-text-secondary">
-              Authority
-            </th>
-            <th className="text-left px-6 py-3 font-medium text-text-secondary">
-              Status
-            </th>
-            <th className="text-left px-6 py-3 font-medium text-text-secondary">
-              Last Updated
-            </th>
-            <th className="text-left px-6 py-3 font-medium text-text-secondary">
-              Rows
-            </th>
+            <th className="text-left px-6 py-3 font-medium text-text-secondary">Authority</th>
+            <th className="text-left px-6 py-3 font-medium text-text-secondary">Status</th>
+            <th className="text-left px-6 py-3 font-medium text-text-secondary">Last Updated</th>
+            <th className="text-left px-6 py-3 font-medium text-text-secondary">Rows</th>
           </tr>
         </thead>
         <tbody>
           {authorities.map((auth, idx) => (
-            <tr
-              key={idx}
-              className="border-b border-border hover:bg-bg-tertiary transition-colors"
-            >
+            <tr key={idx} className="border-b border-border hover:bg-bg-tertiary transition-colors">
               <td className="px-6 py-3 text-text">
                 <span className="font-medium">{auth.name}</span>
                 {auth.code && <div className="text-xs text-text-secondary">{auth.code}</div>}
@@ -240,10 +243,17 @@ function AuthoritiesTab({ result }: { result: ValidationResult }) {
 
 /**
  * Contact Tab
- * Shows contact information and location details
+ * Shows contact information and location details with enrich capability
  */
-function ContactTab({ result }: { result: ValidationResult }) {
+function ContactTab({
+  result,
+  onEnrichComplete,
+}: {
+  result: ValidationResult;
+  onEnrichComplete?: () => void;
+}) {
   const profile = result.profile;
+  const [enriching, setEnriching] = useState(false);
 
   if (!profile) {
     return (
@@ -268,8 +278,68 @@ function ContactTab({ result }: { result: ValidationResult }) {
     { label: "District", value: profile.district },
   ];
 
+  const handleEnrich = async () => {
+    if (!profile.website) {
+      return;
+    }
+
+    setEnriching(true);
+
+    try {
+      const response = await fetch("/api/institutions/enrich", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "enrich_by_name",
+          institutionName: result.institutionName,
+        }),
+      });
+
+      if (response.ok) {
+        // Trigger parent to refresh validation result
+        if (onEnrichComplete) {
+          onEnrichComplete();
+        }
+      }
+    } catch (error) {
+      console.error("Enrichment error:", error);
+    } finally {
+      setEnriching(false);
+    }
+  };
+
   return (
     <div className="bg-bg-secondary border border-border rounded-lg p-6 space-y-8">
+      {/* Enrich Button */}
+      <div className="flex items-center justify-between bg-bg-secondary border border-border rounded-lg p-4">
+        <div>
+          <p className="text-sm font-medium text-text">Extract contact details from website</p>
+          <p className="text-xs text-text-secondary mt-1">
+            Fetch and extract additional contact info from the institution's website
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleEnrich}
+            disabled={enriching || !profile.website}
+            className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${
+              enriching || !profile.website
+                ? "bg-primary/30 text-text-secondary cursor-not-allowed opacity-60"
+                : "bg-primary text-white hover:opacity-90 active:opacity-75"
+            }`}
+          >
+            {enriching ? (
+              <>
+                <Loader2 size={16} className="animate-spin" />
+                Enriching...
+              </>
+            ) : (
+              "Enrich"
+            )}
+          </button>
+        </div>
+      </div>
+
       <div>
         <h3 className="text-lg font-display font-bold mb-4">Contact Information</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -344,9 +414,7 @@ function RegistryTab({ result }: { result: ValidationResult }) {
                     {key.replace(/_/g, " ")}:
                   </span>
                   <span className="text-text font-mono text-right">
-                    {typeof value === "object"
-                      ? JSON.stringify(value)
-                      : String(value || "—")}
+                    {typeof value === "object" ? JSON.stringify(value) : String(value || "—")}
                   </span>
                 </div>
               ))}

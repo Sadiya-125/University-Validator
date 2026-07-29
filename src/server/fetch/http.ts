@@ -19,6 +19,8 @@
 
 import { createHash } from "crypto";
 import * as dns from "dns/promises";
+import { getRedis } from "@/server/cache/redis";
+import { CacheKeys, CacheTTL } from "@/server/cache/keys";
 
 const CRAWLER_USER_AGENT =
   "UniversityValidator/1.0 (+https://github.com/anthropics/university-validator)";
@@ -71,7 +73,6 @@ interface CircuitBreakerState {
 export class HttpClient {
   private circuitBreakers = new Map<string, CircuitBreakerState>();
   private robotsCache = new Map<string, { allowed: Set<string>; time: number }>();
-  private lastRequestTime = new Map<string, number>();
   private readonly politenessDelayMs = 1000; // 1 second between requests per hostname
 
   constructor() {
@@ -92,7 +93,7 @@ export class HttpClient {
     await this.validateHostname(parsedUrl.hostname);
 
     // Check circuit breaker
-    const state = this.getCircuitBreakerState(parsedUrl.hostname);
+    const state = await this.getCircuitBreakerState(parsedUrl.hostname);
     if (state.state === "open") {
       throw new Error(
         `Circuit breaker open for ${parsedUrl.hostname} (last failure: ${Date.now() - (state.lastFailureTime || 0)}ms ago)`
@@ -111,7 +112,10 @@ export class HttpClient {
     let lastError: Error | null = null;
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       try {
-        return await this.fetchInternal(url);
+        const result = await this.fetchInternal(url, attempt);
+        // Record success for circuit breaker
+        await this.recordSuccess(parsedUrl.hostname);
+        return result;
       } catch (error) {
         lastError = error as Error;
 
@@ -125,20 +129,21 @@ export class HttpClient {
           continue;
         }
 
-        // Non-retriable error
-        this.recordFailure(parsedUrl.hostname);
+        // Non-retriable error - record failure for circuit breaker
+        await this.recordFailure(parsedUrl.hostname);
         throw error;
       }
     }
 
-    this.recordFailure(parsedUrl.hostname);
+    // Max retries exceeded - record failure for circuit breaker
+    await this.recordFailure(parsedUrl.hostname);
     throw lastError || new Error("Fetch failed after max retries");
   }
 
   /**
    * Internal fetch implementation
    */
-  private async fetchInternal(url: string): Promise<FetchResult> {
+  private async fetchInternal(url: string, attempt: number = 0): Promise<FetchResult> {
     const startTime = performance.now();
     let connectTime = 0;
     let ttfbTime = 0;
@@ -158,6 +163,18 @@ export class HttpClient {
 
     ttfbTime = performance.now() - startTime;
 
+    // Handle rate limit and server errors with Retry-After
+    if ((response.status === 429 || response.status >= 500) && attempt < MAX_RETRIES) {
+      const retryAfter = this.parseRetryAfter(response.headers.get('Retry-After'));
+      const delay = retryAfter || Math.pow(2, attempt) * 1000 + Math.random() * 1000;
+
+      console.log(`[HTTP] Status ${response.status}, retrying after ${delay}ms (attempt ${attempt + 1}/${MAX_RETRIES})`);
+      await new Promise((r) => setTimeout(r, delay));
+
+      // Re-throw to trigger retry loop
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+
     // Check content type
     const contentType = response.headers.get("content-type")?.split(";")[0];
     if (contentType && !ALLOWED_CONTENT_TYPES.has(contentType)) {
@@ -173,10 +190,6 @@ export class HttpClient {
     const contentHash = this.calculateHash(bodyBuffer);
 
     const totalTime = performance.now() - startTime;
-    const parsedUrl = new URL(url);
-
-    // Record success
-    this.recordSuccess(parsedUrl.hostname);
 
     return {
       status: response.status,
@@ -361,16 +374,52 @@ export class HttpClient {
    * Apply per-hostname politeness delay
    */
   private async applyPolitenessDelay(hostname: string): Promise<void> {
-    const lastTime = this.lastRequestTime.get(hostname);
-    if (lastTime) {
-      const elapsed = Date.now() - lastTime;
-      if (elapsed < this.politenessDelayMs) {
-        await new Promise((r) =>
-          setTimeout(r, this.politenessDelayMs - elapsed)
-        );
+    try {
+      const redis = getRedis();
+      const key = CacheKeys.lock("politeness", hostname);
+      const lastTimeStr = await redis.get(key);
+
+      if (lastTimeStr) {
+        const lastTime = parseInt(lastTimeStr as string, 10);
+        const elapsed = Date.now() - lastTime;
+
+        if (elapsed < this.politenessDelayMs) {
+          const delay = this.politenessDelayMs - elapsed;
+          console.log(`[HTTP] Politeness: waiting ${delay}ms for ${hostname}`);
+          await new Promise((r) => setTimeout(r, delay));
+        }
       }
+
+      // Record this request time in Redis (1 second TTL)
+      await redis.set(key, String(Date.now()));
+      await redis.expire(key, 1);
+    } catch (error) {
+      // If Redis fails, skip politeness delay (fail-open)
+      console.warn(`[HTTP] Politeness delay failed, skipping: ${error}`);
     }
-    this.lastRequestTime.set(hostname, Date.now());
+  }
+
+  /**
+   * Parse Retry-After header
+   * Returns delay in milliseconds, or null if header not present
+   */
+  private parseRetryAfter(retryAfterHeader: string | null): number | null {
+    if (!retryAfterHeader) return null;
+
+    // Try to parse as seconds (most common)
+    const seconds = parseInt(retryAfterHeader, 10);
+    if (!isNaN(seconds) && seconds > 0) {
+      return seconds * 1000;
+    }
+
+    // Try to parse as HTTP-date (RFC 7231)
+    const retryDate = new Date(retryAfterHeader);
+    if (!isNaN(retryDate.getTime())) {
+      const delayMs = retryDate.getTime() - Date.now();
+      return Math.max(0, delayMs);
+    }
+
+    return null;
   }
 
   /**
@@ -381,9 +430,9 @@ export class HttpClient {
   }
 
   /**
-   * Get or create circuit breaker state
+   * Get or create circuit breaker state (in-memory only)
    */
-  private getCircuitBreakerState(hostname: string): CircuitBreakerState {
+  private async getCircuitBreakerState(hostname: string): Promise<CircuitBreakerState> {
     let state = this.circuitBreakers.get(hostname);
     if (!state) {
       state = { state: "closed", failureCount: 0 };
@@ -406,25 +455,32 @@ export class HttpClient {
   /**
    * Record a successful request
    */
-  private recordSuccess(hostname: string): void {
-    const state = this.getCircuitBreakerState(hostname);
+  private async recordSuccess(hostname: string): Promise<void> {
+    const state = await this.getCircuitBreakerState(hostname);
     state.state = "closed";
     state.failureCount = 0;
     state.lastSuccessTime = Date.now();
+
+    // Update in-memory only
+    this.circuitBreakers.set(hostname, state);
   }
 
   /**
    * Record a failed request
    */
-  private recordFailure(hostname: string): void {
-    const state = this.getCircuitBreakerState(hostname);
+  private async recordFailure(hostname: string): Promise<void> {
+    const state = await this.getCircuitBreakerState(hostname);
     state.failureCount++;
     state.lastFailureTime = Date.now();
 
     // Open circuit after 5 failures
     if (state.failureCount >= 5) {
       state.state = "open";
+      console.log(`[CB] Circuit breaker OPENED for ${hostname} after ${state.failureCount} failures`);
     }
+
+    // Update in-memory only
+    this.circuitBreakers.set(hostname, state);
   }
 
   /**

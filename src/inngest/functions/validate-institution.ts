@@ -22,7 +22,6 @@ import { ServerProgressPublisher } from "../channels";
 import type { ValidationRequestedEvent } from "../client";
 import { validate } from "@/server/services/validation.service";
 import type { ValidationOptions } from "@/server/services/validation.service";
-import { getDb } from "@/server/db/client";
 import { getRedis } from "@/server/cache/redis";
 import { randomUUID } from "crypto";
 
@@ -77,17 +76,11 @@ export const validateInstitution = inngest.createFunction(
       });
 
       // Step 2: Prepare validation options
-      const db = getDb()!;
       const redis = getRedis();
 
       const validationOpts: ValidationOptions = {
         runId,
         maxTier,
-        db: {
-          query: async (sql: string, params?: unknown[]) => {
-            return (db as any).query?.(sql, params) || null;
-          },
-        },
         redis: {
           get: async (key: string) => (await redis.get(key)) as string | null,
           setex: async (key: string, ttlSec: number, value: string) => {

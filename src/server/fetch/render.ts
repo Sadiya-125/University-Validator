@@ -13,6 +13,8 @@
  */
 
 import { createHash } from "crypto";
+import { getRedis } from "@/server/cache/redis";
+import { CacheKeys, CacheTTL } from "@/server/cache/keys";
 
 /**
  * Rendered page result
@@ -51,8 +53,6 @@ export interface RenderProvider {
 export class HttpBrowserWorker implements RenderProvider {
   private baseUrl: string;
   private infraToken: string;
-  private cache = new Map<string, { html: string; time: number }>();
-  private readonly cacheTTL = 24 * 60 * 60 * 1000; // 24 hours
 
   constructor(baseUrl: string, infraToken: string) {
     this.baseUrl = baseUrl;
@@ -64,7 +64,7 @@ export class HttpBrowserWorker implements RenderProvider {
    */
   async render(opts: RenderOptions): Promise<RenderedPage> {
     // Check cache
-    const cached = this.getFromCache(opts.url);
+    const cached = await this.getCached(opts.url);
     if (cached) {
       return {
         html: cached,
@@ -104,7 +104,7 @@ export class HttpBrowserWorker implements RenderProvider {
       };
 
       // Cache the result
-      this.setInCache(opts.url, data.html);
+      await this.setCached(opts.url, data.html);
 
       return {
         html: data.html,
@@ -136,34 +136,41 @@ export class HttpBrowserWorker implements RenderProvider {
   }
 
   /**
-   * Get from cache by URL hash
+   * Get URL hash for cache key
    */
-  private getFromCache(url: string): string | null {
-    const key = this.hashUrl(url);
-    const entry = this.cache.get(key);
+  private getUrlHash(url: string): string {
+    return createHash("sha256").update(url).digest("hex").substring(0, 8);
+  }
 
-    if (!entry) return null;
-    if (Date.now() - entry.time > this.cacheTTL) {
-      this.cache.delete(key);
+  /**
+   * Get from Redis cache
+   */
+  private async getCached(url: string): Promise<string | null> {
+    try {
+      const redis = getRedis();
+      const hash = this.getUrlHash(url);
+      const key = CacheKeys.renderedPage(hash);
+      const cached = await redis.get(key);
+      return cached ? (cached as string) : null;
+    } catch (error) {
+      console.warn(`[Render] Cache get failed: ${error}`);
       return null;
     }
-
-    return entry.html;
   }
 
   /**
-   * Set in cache by URL hash
+   * Set in Redis cache
    */
-  private setInCache(url: string, html: string): void {
-    const key = this.hashUrl(url);
-    this.cache.set(key, { html, time: Date.now() });
-  }
-
-  /**
-   * Hash URL for cache key
-   */
-  private hashUrl(url: string): string {
-    return createHash("sha256").update(url).digest("hex");
+  private async setCached(url: string, html: string): Promise<void> {
+    try {
+      const redis = getRedis();
+      const hash = this.getUrlHash(url);
+      const key = CacheKeys.renderedPage(hash);
+      await redis.set(key, html);
+      await redis.expire(key, CacheTTL.RENDERED_PAGE);
+    } catch (error) {
+      console.warn(`[Render] Cache set failed: ${error}`);
+    }
   }
 }
 

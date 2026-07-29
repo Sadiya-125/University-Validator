@@ -92,36 +92,71 @@ export function ConfidenceBar({
         style={{ originX: 0 }}
       >
         <div className="flex h-full">
-          {normalizedContributions.map((contrib, idx) => (
-            <motion.div
-              key={idx}
-              className={cn(COLOR_MAP[contrib.color])}
-              initial={{ width: 0 }}
-              animate={{
-                width: `${(contrib.percentage / confidence) * 100}%`,
-              }}
-              transition={{
-                duration: 0.6,
-                delay: 0.2 + idx * 0.1,
-                ease: "easeOut",
-              }}
-              title={`${contrib.label}: ${(contrib.percentage * 100).toFixed(1)}%`}
-            />
-          ))}
-          {/* Remaining (unfilled) */}
-          {confidence < 1 && (
-            <motion.div
-              className="bg-bg-tertiary"
-              initial={{ width: 0 }}
-              animate={{
-                width: `${(1 - confidence) * 100}%`,
-              }}
-              transition={{
-                duration: 0.6,
-                delay: 0.2 + normalizedContributions.length * 0.1,
-                ease: "easeOut",
-              }}
-            />
+          {normalizedContributions.length > 0 ? (
+            <>
+              {normalizedContributions.map((contrib, idx) => (
+                <motion.div
+                  key={idx}
+                  className={cn(COLOR_MAP[contrib.color])}
+                  initial={{ width: 0 }}
+                  animate={{
+                    width: `${(contrib.percentage / confidence) * 100}%`,
+                  }}
+                  transition={{
+                    duration: 0.6,
+                    delay: 0.2 + idx * 0.1,
+                    ease: "easeOut",
+                  }}
+                  title={`${contrib.label}: ${(contrib.percentage * 100).toFixed(1)}%`}
+                />
+              ))}
+              {/* Remaining (unfilled) */}
+              {confidence < 1 && (
+                <motion.div
+                  className="bg-bg-tertiary"
+                  initial={{ width: 0 }}
+                  animate={{
+                    width: `${(1 - confidence) * 100}%`,
+                  }}
+                  transition={{
+                    duration: 0.6,
+                    delay: 0.2 + normalizedContributions.length * 0.1,
+                    ease: "easeOut",
+                  }}
+                />
+              )}
+            </>
+          ) : (
+            <>
+              {/* Default filled portion when no contributions provided */}
+              <motion.div
+                className="bg-success"
+                initial={{ width: 0 }}
+                animate={{
+                  width: `${percentage}%`,
+                }}
+                transition={{
+                  duration: 0.6,
+                  delay: 0.2,
+                  ease: "easeOut",
+                }}
+              />
+              {/* Unfilled portion */}
+              {confidence < 1 && (
+                <motion.div
+                  className="bg-bg-tertiary"
+                  initial={{ width: 0 }}
+                  animate={{
+                    width: `${(1 - confidence) * 100}%`,
+                  }}
+                  transition={{
+                    duration: 0.6,
+                    delay: 0.3,
+                    ease: "easeOut",
+                  }}
+                />
+              )}
+            </>
           )}
         </div>
       </motion.div>

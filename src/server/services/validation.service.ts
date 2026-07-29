@@ -17,10 +17,12 @@
  */
 
 // Normalizable is just a string type for institution names
+import { createHash } from "crypto";
 import type { ResolvedIdentity } from "../discovery/types";
 import type { VerificationResult } from "../verification/types";
 import type { EvidenceCollector } from "../evidence/collector";
 import type { ScoringPolicy, ScoringDecision } from "../scoring/types";
+import { CacheKeys, CacheTTL } from "@/server/cache/keys";
 
 // Placeholder types for LLM processing
 export interface ExtractedFacts {
@@ -91,6 +93,38 @@ export interface ValidationOptions {
 }
 
 /**
+ * Helper: Hash institution name for cache keys
+ */
+function hashInstitutionName(name: string): string {
+  return createHash("sha256").update(name.toLowerCase().trim()).digest("hex").substring(0, 8);
+}
+
+/**
+ * Helper: Cache verdict in Redis after validation completes
+ */
+async function cacheVerdict(
+  normalizedName: string,
+  verdict: string,
+  opts: ValidationOptions
+): Promise<void> {
+  if (!opts.redis) return;
+
+  try {
+    const nameHash = hashInstitutionName(normalizedName);
+    const cacheKey = CacheKeys.verdict(nameHash);
+    const cacheData = JSON.stringify({
+      verdict,
+      cachedAt: new Date().toISOString(),
+    });
+
+    await opts.redis.setex(cacheKey, CacheTTL.VERDICT, cacheData);
+  } catch (error) {
+    // Cache failure is non-fatal
+    console.warn("[cacheVerdict] Failed to cache verdict:", error);
+  }
+}
+
+/**
  * Stage 1: Resolve from cache (L0/L1) — <120ms
  * Checks: Redis verdict → institutions_db → freshness
  */
@@ -109,7 +143,8 @@ export async function resolveFastPath(
 
     // Check Redis (L0)
     if (opts.redis) {
-      const redisKey = `verdict:${normalized}`;
+      const nameHash = hashInstitutionName(normalized);
+      const redisKey = CacheKeys.verdict(nameHash);
       const cached = await opts.redis.get(redisKey);
       if (cached) {
         const { verdict, cachedAt } = JSON.parse(cached);
@@ -478,12 +513,19 @@ export async function validate(
   }
 
   try {
+    // Normalize input once
+    const normalized = String(input).toLowerCase().trim();
+
     // Stage 1: Fast path (L0/L1)
     const fastRes = await resolveFastPath(input, opts);
     if (!fastRes.success) return fastRes;
 
     if (fastRes.data.hit) {
       onProgress?.("validate", "complete", { tier: "fast", verdict: fastRes.data.verdict, stale: fastRes.data.stale });
+      // Cache hit from L1 (institutions_db) should also be cached in L0 (Redis)
+      if (fastRes.data.source === "institutions_db") {
+        await cacheVerdict(normalized, fastRes.data.verdict!, opts);
+      }
       return {
         success: true,
         data: { verdict: fastRes.data.verdict!, authorities: fastRes.data.authorities },
@@ -500,6 +542,8 @@ export async function validate(
 
     if (mirrorRes.data.resolved) {
       onProgress?.("validate", "complete", { tier: "mirror", verdict: mirrorRes.data.verdict });
+      // Cache verdict from mirror path in Redis
+      await cacheVerdict(normalized, mirrorRes.data.verdict!, opts);
       return {
         success: true,
         data: { verdict: mirrorRes.data.verdict!, decision: mirrorRes.data.decision },
@@ -557,6 +601,9 @@ export async function validate(
     if (!finalizeRes.success) return finalizeRes;
 
     onProgress?.("validate", "complete", { tier: "finalize", validationRunId: finalizeRes.data.validationRunId });
+
+    // Cache finalized verdict in Redis
+    await cacheVerdict(normalized, "FINALIZED", opts);
 
     return {
       success: true,
